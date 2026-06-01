@@ -4,7 +4,9 @@
 
 The OCR import pipeline helps administrators convert PDFs, scanned exams, screenshots, and photos into structured question bank content.
 
-OCR is a content-production tool only. It does not auto-publish content.
+OCR is a content ingestion tool only. It does not grant publishing rights and does not auto-publish content.
+
+OCR-imported content always enters review before it can be published. Publishing is further restricted by the content ownership classification assigned during review.
 
 ## 2. Supported Inputs
 
@@ -27,17 +29,22 @@ Admin Upload
         ↓
 Raw Source Storage
         ↓
-Native PDF Text Extraction if available
+Native PDF Text Extraction (if available)
         ↓
-OCR if needed
+OCR (if needed)
         ↓
 AI Structure Extraction
         ↓
-Review Queue
+Review Queue (status: needs_review)
+        ↓
+Admin Ownership Review
+        ↓
+  Copyright-safe? → Assign publishable ownership classification
+  Copyright unclear? → Classify as internal_draft or restricted_reference_only
         ↓
 Admin Edit / Approve / Reject
         ↓
-Question Bank
+Question Bank (published only if ownership classification permits)
 ```
 
 ## 4. Processing Rules
@@ -50,10 +57,10 @@ For PDFs:
 For images/photos:
 
 - Run preprocessing where practical:
-  - rotation correction
-  - deskew
-  - contrast enhancement
-  - crop detection
+  - Rotation correction
+  - Deskew
+  - Contrast enhancement
+  - Crop detection
 
 ## 5. AI Structure Extraction
 
@@ -73,61 +80,104 @@ AI converts OCR text into draft structured objects:
 - Topic tags
 - Difficulty estimate
 
-## 6. Review Queue
+AI structure extraction is a drafting aid. All extracted content requires admin review before it can be approved or published.
+
+## 6. Content Ownership Classification
+
+Every OCR-imported question must be assigned a content ownership classification during admin review.
+
+**OCR-imported content defaults to `internal_draft` upon ingestion.**
+
+The admin must determine the correct classification before approving for publishing:
+
+| Classification | When to Apply | Publishing Allowed |
+|---|---|---|
+| `original` | Admin rewrote or created content from scratch using OCR as a reference only | Yes |
+| `licensed` | Source material is covered by a confirmed platform licence | Yes |
+| `public_domain` | Source confirmed as public domain | Yes |
+| `approved_internal` | Internal draft reviewed and cleared for publishing | Yes |
+| `internal_draft` | Copyright status not yet confirmed | No |
+| `restricted_reference_only` | Source is copyright-protected; not cleared for publishing | No |
+
+### Copyright Warning
+
+Ingesting a copyrighted document does not grant publishing rights. The following content types are copyright-protected and cannot be published without a licence:
+
+- Official NSW OC test papers
+- Official NSW Selective High School test papers
+- Third-party question banks or workbooks
+- Copyrighted images, diagrams, or charts
+
+If an admin is uncertain about a source's copyright status, they must classify it as `internal_draft` or `restricted_reference_only` and seek legal review before assigning a publishable classification.
+
+Assigning a publishable classification to content that is not genuinely owned or licensed is a misuse of the platform and creates legal liability.
+
+## 7. Review Queue
 
 Every OCR-generated question enters review.
 
 Statuses:
 
-- uploaded
-- ocr_processing
-- extraction_processing
-- needs_review
-- approved
-- rejected
-- published
+- `uploaded` — source file received
+- `ocr_processing` — OCR job running
+- `extraction_processing` — AI structure extraction running
+- `needs_review` — awaiting admin review and ownership classification
+- `in_review` — claimed by an admin (prevents concurrent review conflicts)
+- `approved` — reviewed, ownership assigned, approved for question bank
+- `rejected` — rejected with reason
+- `published` — promoted to published question bank
 
-## 7. Admin Review Screen
+## 8. Admin Review Screen
 
-Admin should see:
+Admin must see:
 
-- Original page image/PDF preview
-- OCR text
-- Extracted structured question
-- Editable fields
-- Confidence values
+- Original page image or PDF preview
+- OCR extracted text
+- Extracted structured question (editable)
+- Confidence values (OCR confidence, extraction confidence)
+- Content ownership classification selector (required before approval)
+- Copyright note field (for attribution or restriction reason)
 - Approve/reject controls
 
-## 8. Traceability
+The approval action must be blocked if the content ownership classification is `internal_draft` or `restricted_reference_only`.
 
-Each generated question should store:
+## 9. Traceability
 
-- source_file_id
-- source_page_number
-- source_region if available
-- ocr_confidence
-- extraction_confidence
-- reviewed_by
-- reviewed_at
+Each generated question must store:
 
-## 9. Recommended Technology
+- `source_file_id`
+- `source_page_number`
+- `source_region` (if available)
+- `ocr_confidence`
+- `extraction_confidence`
+- `content_ownership` (assigned by admin at review)
+- `copyright_note` (optional)
+- `reviewed_by`
+- `reviewed_at`
+
+## 10. Recommended Technology
 
 MVP:
 
-- PyMuPDF for PDF text extraction
-- PaddleOCR or Tesseract for OCR
-- LLM structured JSON extraction
+- PyMuPDF for native PDF text extraction
+- PaddleOCR or Tesseract for OCR on images/scanned pages
+- LLM structured JSON extraction for question structuring
 - DB-backed job statuses
+
+For maths-heavy content:
+
+- Consider Pix2Text as a supplementary OCR step to handle mathematical notation (fractions, equations) that standard OCR misses.
 
 Future:
 
 - Google Document AI
 - Azure Document Intelligence
-- More advanced layout detection
+- More advanced layout and diagram detection
 
-## 10. Non-Goals for MVP
+## 11. Non-Goals for MVP
 
-- No automatic publishing.
+- No automatic publishing of OCR content.
+- No automatic copyright determination.
 - No handwriting recognition guarantee.
 - No perfect diagram extraction.
-- No automatic copyright/legal validation.
+- No auto-assignment of ownership classifications.
