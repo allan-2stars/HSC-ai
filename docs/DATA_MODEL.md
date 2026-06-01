@@ -463,7 +463,117 @@ Fields:
 
 Note: The `payload_contained_student_data` flag supports periodic privacy audits to confirm that student personal data is not being sent to AI providers except where explicitly intended.
 
-## 9. Future Extensions (Not V1)
+## 9. Analytics Entities
+
+These entities support future recommendation and weakness analysis features. They are designed to be populated progressively as students take exams. V1 should create the tables and populate `QuestionAttempt` records on attempt submission. `TopicPerformance` and `StudentSkillScore` may be computed in background jobs in V2+.
+
+Do not implement analytics UI or recommendation features in V1. Lay the data foundation only.
+
+### QuestionAttempt
+
+A denormalised record of a student's interaction with a single question. Created for each `AttemptAnswer` on submission. Enables per-question performance analytics without querying the full attempt tree.
+
+Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| student_id | uuid | FK → StudentProfile |
+| question_id | uuid | FK → Question (the root question identity) |
+| question_version_id | uuid | FK → QuestionVersion (the exact version answered) |
+| attempt_id | uuid | FK → Attempt |
+| answered_correctly | boolean | Copied from AttemptAnswer.is_correct |
+| time_taken_seconds | integer | Time spent on this question |
+| created_at | timestamptz | UTC — mirrors AttemptAnswer.answered_at |
+
+Rules:
+
+- One record per AttemptAnswer, created at attempt submission time.
+- Never updated. If an attempt is reanalysed, insert a new record; do not update existing ones.
+- `question_id` is denormalised from `question_version_id` for simpler per-question aggregation queries.
+
+### TopicPerformance
+
+An aggregated summary of a student's performance within a topic. Updated (or recalculated) when new QuestionAttempt records are inserted for the student.
+
+Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| student_id | uuid | FK → StudentProfile |
+| topic_id | uuid | FK → Topic |
+| attempts | integer | Total questions attempted in this topic |
+| correct_count | integer | Total correct answers |
+| accuracy_rate | numeric(5,2) | correct_count / attempts × 100 |
+| average_time_seconds | numeric(6,1) | Average time per question in this topic |
+| last_updated_at | timestamptz | When this aggregate was last recalculated |
+
+Rules:
+
+- One record per (student_id, topic_id) combination.
+- Updated incrementally or recalculated from QuestionAttempt records.
+- `accuracy_rate` is a computed/stored value; it must be kept consistent with `attempts` and `correct_count`.
+- Used by the parent dashboard weakness summary in V1 (rule-based, not AI).
+
+### StudentSkillScore
+
+A higher-level skill proficiency estimate. Computed from TopicPerformance and QuestionAttempt data. Intended for future AI-powered recommendation features; populated by a background job.
+
+In V1, this table is created but may remain empty. It is populated when the recommendation engine is implemented (V2+).
+
+Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| student_id | uuid | FK → StudentProfile |
+| skill_name | text | Matches SkillTag.name or a computed skill label |
+| score | numeric(5,2) | Proficiency score, 0–100 |
+| confidence | numeric(4,3) | Model confidence in the score, 0–1. Low confidence = insufficient data. |
+| evidence_count | integer | Number of QuestionAttempt records used to compute this score |
+| last_calculated_at | timestamptz | When the score was last computed |
+
+Rules:
+
+- One record per (student_id, skill_name) combination.
+- Scores with `evidence_count < 5` should be treated as unreliable and not surfaced in UI.
+- `confidence` below 0.5 should trigger a "not enough data" display rather than showing the score.
+- Scores are recalculated by a background job; they are not updated in-line during exam submission.
+
+### Analytics Usage in V1
+
+In V1, analytics are rule-based SQL queries over `QuestionAttempt` and `TopicPerformance`. No AI involvement.
+
+V1 parent dashboard queries:
+
+```
+Score trend:
+  SELECT attempt.submitted_at, attempt.score_pct
+  FROM attempts
+  WHERE student_id = :student_id
+  ORDER BY submitted_at DESC
+  LIMIT 10
+
+Weakest topics:
+  SELECT topic.name, tp.accuracy_rate, tp.attempts
+  FROM topic_performance tp
+  JOIN topics topic ON tp.topic_id = topic.id
+  WHERE tp.student_id = :student_id
+    AND tp.attempts >= 5
+  ORDER BY tp.accuracy_rate ASC
+  LIMIT 5
+
+Time vs. accuracy:
+  SELECT AVG(time_taken_seconds), AVG(CASE WHEN answered_correctly THEN 1 ELSE 0 END)
+  FROM question_attempts
+  WHERE student_id = :student_id
+    AND created_at > NOW() - INTERVAL '30 days'
+```
+
+AI-powered recommendations are deferred until TopicPerformance data is meaningful (≥500 QuestionAttempt records per subject).
+
+## 10. Future Extensions (Not V1)
 
 ### Organization (reserved for school/tutor support)
 

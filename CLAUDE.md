@@ -66,12 +66,14 @@ Read these documents before making architectural changes:
 1. `docs/PRD.md`
 2. `docs/ARCHITECTURE.md`
 3. `docs/DATA_MODEL.md`
-4. `docs/EXAM_ENGINE.md`
-5. `docs/OCR_IMPORT_PIPELINE.md`
-6. `docs/AI_PROVIDER_STRATEGY.md`
-7. `docs/SECURITY_PRIVACY.md`
-8. `docs/ADMIN_CONTENT_WORKFLOW.md`
-9. `docs/OPEN_DECISIONS.md`
+4. `docs/QUESTION_BANK.md`
+5. `docs/EXAM_ENGINE.md`
+6. `docs/CONTENT_STRATEGY.md`
+7. `docs/OCR_IMPORT_PIPELINE.md`
+8. `docs/AI_PROVIDER_STRATEGY.md`
+9. `docs/SECURITY_PRIVACY.md`
+10. `docs/ADMIN_CONTENT_WORKFLOW.md`
+11. `docs/OPEN_DECISIONS.md`
 
 Also review applicable skills in `skills/` before implementing AI or exam content features.
 

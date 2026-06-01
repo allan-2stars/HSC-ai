@@ -208,3 +208,29 @@ Options:
 - NSW Selective-aligned rubric (requires legal review of NSW DoE marking criteria)
 
 Required before: Milestone 4 (writing assessment feature)
+
+---
+
+### 10. Dynamic Question Pool Implementation
+
+QUESTION_BANK.md documents two pool types: static (explicit question list) and dynamic (query-based selection at instance creation time).
+
+V1 implements static pools only. Dynamic pools are documented as a future feature.
+
+Decision needed: Is dynamic pool selection required before public launch, or is static-only sufficient for V1?
+
+Required before: Milestone 2 (exam template builder)
+
+---
+
+### 11. ExamTemplate vs ExamInstance separation in V1
+
+QUESTION_BANK.md defines ExamTemplate (blueprint) and ExamInstance (frozen delivery) as separate entities.
+
+For V1, each template will produce exactly one active instance. The separation adds schema complexity but prevents a future migration.
+
+Decision needed: Implement full Template/Instance separation from the start, or use a simplified single-table approach for V1 with a migration path documented?
+
+Recommendation: Implement the full separation. The cost is one extra table join; the benefit is avoiding a painful migration when multi-instance delivery is needed.
+
+Required before: Milestone 2 (question bank implementation)

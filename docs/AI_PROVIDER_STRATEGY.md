@@ -4,129 +4,160 @@
 
 The system must support AI-assisted features without coupling business logic to a single model provider.
 
-The AI layer must be provider-independent and switchable via configuration.
+The AI layer must be provider-independent and switchable via configuration. Provider selection is determined entirely by the `AI_PROVIDER` environment variable — no provider logic is hardcoded into business services.
 
-## 2. Supported Provider Targets
+---
 
-Approved providers:
+## 2. Provider Classification
 
-- OpenAI
-- Claude (Anthropic)
-- Ollama (local/self-hosted)
-- OpenRouter (routing aggregator — see caution below)
+Providers are classified into two tiers: **Production Approved** and **Experimental**.
 
-Development default:
+### Production Approved
 
-- OpenAI or a locally hosted Ollama model during development
+These providers have been evaluated for use with Australian children's education data and may be used in production deployments with student-facing features (subject to data processing agreements being in place).
 
-Production default:
+| Provider | Notes |
+|---|---|
+| **OpenAI** | Preferred production provider. API data is not used for training by default. Requires data processing agreement. Do not send student PII (name, DOB, contact details). |
+| **Claude (Anthropic)** | Preferred production provider. No training on API data. Strong privacy posture. Requires data processing agreement. Do not send student PII. |
 
-- Must be explicitly configured via environment variable
-- Must be a provider with an appropriate data processing agreement for use with student data
+Production providers must be configured with:
 
-### Provider Caution: DeepSeek
+- A signed data processing agreement (DPA) reviewed against Australian Privacy Principles
+- Explicit opt-out from training data usage (API access typically provides this)
+- A confirmed understanding that student writing responses (Category B payloads) are transmitted
 
-DeepSeek is not approved for use in this platform with student data or in production.
+### Experimental
 
-Reason: DeepSeek is subject to data localisation requirements under PRC law. These requirements are incompatible with the platform's obligations under APP 8 of the Australian Privacy Act 1988, which requires overseas disclosure of personal information to meet equivalent Australian Privacy Principles standards.
+These providers are available via the provider abstraction layer and may be used for development, testing, or admin-only features. They are not approved for production deployments where student data is involved.
 
-DeepSeek may be evaluated for admin-only, non-student-data contexts with explicit legal sign-off, but is not an approved default.
-
-### Provider Caution: OpenRouter
-
-OpenRouter routes requests to multiple underlying providers. The data handling policy of the final provider receiving the request may not meet Australian Privacy Principles requirements. Use OpenRouter only for admin-only features where no student data is involved, and document which underlying provider is being used.
-
-### Provider Caution: Gemini (Google)
-
-Gemini may be used for admin features. Review Google's current data processing agreements and opt-out of training data usage before use with any student content.
-
-## 3. AI Use Cases
-
-### Admin Features
-
-- OCR structure extraction
-- AI-generated draft questions
-- Explanation drafting
-- Topic and difficulty tagging assistance
-- Writing prompt quality review
-- Question quality review
-
-### Premium Student/Parent Features
-
-- Weakness analysis
-- Practice recommendations
-- AI tutor explanation
-- Writing feedback (Selective School)
-- Readiness summary
-
-## 4. AI Skill System
-
-The platform uses a structured skill system to define AI responsibilities and quality standards. Skills are documented in the `skills/` directory.
-
-### Current Skills
-
-| Skill | File | Purpose |
+| Provider | Approved Use | Restrictions |
 |---|---|---|
-| NSW OC Question Generation | `skills/nsw-oc-question-generation.md` | Generate draft OC exam questions |
-| NSW Selective Question Generation | `skills/nsw-selective-question-generation.md` | Generate draft Selective exam questions including writing prompts |
-| Writing Assessment | `skills/writing-assessment.md` | Provide AI-assisted feedback on writing responses |
-| Question Quality Review | `skills/question-quality-review.md` | Review drafted questions for quality before admin approval |
-| AI Question Generation (general) | `skills/ai-question-generation.md` | General rules for AI question generation |
-| Exam Content Design | `skills/exam-content-design.md` | Principles for designing exam content |
-| NSW Exam Domain | `skills/nsw-exam-domain.md` | Domain knowledge rules for NSW exam content |
-| OCR Import Review | `skills/ocr-import-review.md` | Rules for OCR import and review workflow |
+| **Ollama** | Development, offline, admin question generation | No student data restriction — data stays local. Safe for all use cases. Best choice for privacy-sensitive contexts. |
+| **DeepSeek** | Development and admin-only question generation | Must not receive student data. Subject to PRC data localisation law (see Section 3). Requires explicit opt-in via config. |
+| **Gemini (Google)** | Admin question generation only | Review Google DPA before use. Do not use for student-facing features without confirmed DPA. |
+| **OpenRouter** | Admin question generation only | Routing aggregator — document which underlying provider is receiving requests. Do not use for student data. |
 
-### Skill Responsibilities
+Experimental providers are enabled via the `AI_PROVIDER_EXPERIMENTAL=true` environment variable. This flag must be absent or false in any production deployment handling student data.
 
-Each skill defines:
+---
 
-- Input requirements (what the AI receives)
-- Output format (what the AI must return)
-- Quality standards (what constitutes acceptable output)
-- Privacy constraints (what must not be included in the payload)
+## 3. DeepSeek — Experimental Status and Restrictions
 
-Business services must call AI through the skill abstraction. Skills must not be bypassed to call providers directly.
+DeepSeek is classified as **Experimental** and carries specific restrictions that must be understood before enabling it.
 
-## 5. Provider Abstraction
+**Legal context:**
 
-Business services call an internal interface. The provider router decides which backend model to use based on configuration.
+DeepSeek is subject to data localisation requirements under the People's Republic of China's Data Security Law and Cybersecurity Law. These laws require that data processed by PRC-based services may be subject to government access requests. This is incompatible with the platform's obligations under APP 8 of the Australian Privacy Act 1988, which requires that overseas disclosure of personal information meets equivalent privacy standards.
 
-Core interface methods:
+**What this means in practice:**
 
-- `generate_question_draft` — produces a draft question for admin review
-- `generate_explanation` — drafts an explanation for a question
-- `extract_questions_from_ocr` — structures OCR text into question format
-- `analyze_weakness` — summarizes student performance pattern
-- `recommend_practice` — suggests practice content based on performance
-- `assess_writing` — returns feedback on a writing response against a rubric
+| Use Case | DeepSeek Permitted |
+|---|---|
+| Admin generating OC maths questions (no student data) | Yes, with `AI_PROVIDER_EXPERIMENTAL=true` |
+| Admin OCR structure extraction (no student data) | Yes, with `AI_PROVIDER_EXPERIMENTAL=true` |
+| Writing assessment (student response text) | No |
+| Weakness analysis (student performance data) | No |
+| Any payload containing student name, DOB, or contact details | No |
 
-No business route handler should import or call an AI provider SDK directly.
+**Configuration:**
 
-## 6. AI Privacy Rules
+DeepSeek is enabled only when both conditions are met:
 
-### Two Categories of AI Use
+1. `AI_PROVIDER=deepseek` is set explicitly
+2. `AI_PROVIDER_EXPERIMENTAL=true` is set
 
-AI features fall into two distinct categories with different privacy requirements:
+If `AI_PROVIDER_EXPERIMENTAL` is not `true`, the provider factory must refuse to initialise a DeepSeek provider and log a warning.
 
-**Category A: Admin-only AI (question generation, OCR extraction)**
+DeepSeek must never be the default provider in any environment.
 
-- No student personal data involved.
-- Admin provides a prompt: subject, topic, difficulty, year level.
-- Any provider may be used with standard data handling.
+---
 
-**Category B: Student-facing AI (writing feedback, weakness analysis)**
+## 4. Provider Abstraction
 
-- May involve student response content.
-- Must not include student personal information.
-- Provider must have a valid data processing agreement.
-- Log each request with `payload_contained_student_data = true`.
+The provider abstraction ensures all AI calls go through a common interface. No business route handler or service imports a provider SDK directly.
+
+### Environment Variable Configuration
+
+```
+AI_PROVIDER=openai              # Active provider for Category A (admin) features
+AI_PROVIDER_STUDENT=openai      # Active provider for Category B (student-facing) features
+                                # If unset, falls back to AI_PROVIDER
+AI_PROVIDER_EXPERIMENTAL=false  # Must be true to enable experimental providers
+```
+
+### Provider Factory (conceptual)
+
+```python
+def get_provider(category: str = "admin") -> AIProvider:
+    provider_name = settings.AI_PROVIDER_STUDENT if category == "student" else settings.AI_PROVIDER
+    if provider_name in EXPERIMENTAL_PROVIDERS:
+        if not settings.AI_PROVIDER_EXPERIMENTAL:
+            raise ConfigurationError(
+                f"Provider '{provider_name}' is experimental. "
+                "Set AI_PROVIDER_EXPERIMENTAL=true to enable."
+            )
+    return PROVIDER_REGISTRY[provider_name]()
+```
+
+---
+
+## 5. AI Use Cases
+
+### Category A: Admin-Only Features
+
+No student personal data involved. Admin provides subject, topic, difficulty parameters.
+
+| Feature | Skill | Notes |
+|---|---|---|
+| OC question generation | `nsw-oc-question-generation` | Admin-only |
+| Selective question generation | `nsw-selective-question-generation` | Admin-only |
+| OCR structure extraction | — | Admin-only |
+| Explanation drafting | — | Admin-only |
+| Topic/difficulty tagging assistance | — | Admin-only |
+| Question quality review | `question-quality-review` | Admin-only |
+
+Category A features may use any approved or experimental provider.
+
+### Category B: Student-Facing Features
+
+May include student response content. No PII permitted.
+
+| Feature | Skill | Notes |
+|---|---|---|
+| Writing assessment | `writing-assessment` | Contains student writing response |
+| Weakness analysis | — | Contains anonymised performance data |
+| Practice recommendations | — | Contains anonymised performance pattern |
+| AI tutor explanation | — | Contains question + student answer |
+
+Category B features must only use Production Approved providers. Student PII (name, DOB, contact details) must be stripped before the payload is constructed.
+
+---
+
+## 6. AI Skill System
+
+The platform uses a structured skill system to define AI responsibilities. Skills are documented in the `skills/` directory and must be used by business services. Direct provider calls from route handlers are not permitted.
+
+### Skill Registry
+
+| Skill | File | Category | Approved Providers |
+|---|---|---|---|
+| NSW OC Question Generation | `skills/nsw-oc-question-generation.md` | A (admin) | Any |
+| NSW Selective Question Generation | `skills/nsw-selective-question-generation.md` | A (admin) | Any |
+| Writing Assessment | `skills/writing-assessment.md` | B (student) | Production Approved only |
+| Question Quality Review | `skills/question-quality-review.md` | A (admin) | Any |
+| AI Question Generation (general) | `skills/ai-question-generation.md` | A (admin) | Any |
+
+---
+
+## 7. AI Privacy Rules
 
 ### Allowed in AI Payloads
 
-The following are permitted in AI provider requests:
+The following are permitted:
 
 - Prompt text (question or writing prompt)
-- Student response text (writing content, answers — for assessment only)
+- Student response text (writing content — for writing assessment only)
 - Rubric or marking criteria
 - Year level (e.g., Year 5)
 - Exam type (e.g., OC, Selective)
@@ -137,7 +168,7 @@ The following are permitted in AI provider requests:
 
 ### Prohibited from AI Payloads
 
-The following must never appear in AI provider requests:
+The following must never be included:
 
 - Student full name
 - Student date of birth
@@ -149,29 +180,17 @@ The following must never appear in AI provider requests:
 - School name or location
 - Any combination of fields that could re-identify a student
 
-## 7. Writing Assessment
+### Privacy Audit
 
-Writing assessment is a V1 AI feature for the Selective School writing component.
+All AI requests are logged in `AIUsageLog` with a `payload_contained_student_data` boolean. Category B requests must set this flag to `true`. A monthly audit should confirm no PII appears in Category B payloads.
 
-The AI:
-
-- Receives: writing prompt, student response, rubric, year level, exam type
-- Returns: structured feedback covering content, vocabulary, structure, and style
-- Does not: assign an official mark or grade
-
-All writing feedback must display the following disclaimer in every UI surface:
-
-> "Writing feedback is educational guidance and does not represent official Selective School marking."
-
-Writing feedback is stored in the `WritingFeedback` table linked to the student's attempt response. It is not part of the immutable attempt record and does not affect the attempt score.
+---
 
 ## 8. AI Generated Content Policy
 
-AI-generated content is always a draft.
+AI-generated content is always a draft. The mandatory workflow is:
 
-The mandatory workflow is:
-
-```text
+```
 Draft (AI generated)
   ↓
 Review (admin mandatory — no exceptions)
@@ -181,40 +200,52 @@ Approved
 Published
 ```
 
-Auto-publishing is not permitted for any AI-generated content. This applies to:
+Auto-publishing is not permitted for any AI-generated content. This applies to questions, explanations, and OCR-extracted structures.
 
-- Generated questions
-- Generated explanations
-- Structured questions extracted from OCR
-- Any AI-structured content
+---
 
-## 9. Logging
+## 9. Writing Assessment Disclaimer
 
-AI usage must log:
+All writing feedback generated by AI must be accompanied by the following disclaimer in every UI surface:
+
+> "Writing feedback is educational guidance and does not represent official Selective School marking."
+
+This disclaimer is non-negotiable. It must not be hidden, minimised, or removed.
+
+---
+
+## 10. Logging
+
+AI usage is logged in `AIUsageLog`:
 
 - Provider name
-- Feature or skill invoked
-- User/admin scope
+- Skill or feature invoked
+- User or admin scope
 - Token estimate (input and output)
 - Error status
 - Cost estimate
 - `payload_contained_student_data` boolean
 
-Do not log raw prompt text unless explicitly required for debugging and protected under access controls.
+Raw prompt text must not be logged unless explicitly required for debugging and protected by admin-only access controls.
 
-## 10. Premium Gating
+---
+
+## 11. Premium Gating
 
 AI features are Premium-only unless limited trial usage is configured.
 
 Examples:
 
-- Limited free AI explanations per month
-- Limited recommendations per week
-- Writing feedback available to premium subscribers
+- Limited free AI explanation views per month
+- Limited practice recommendations per week
+- Writing feedback available to premium subscribers only
 
-## 11. Non-Goals for MVP
+---
+
+## 12. Non-Goals for MVP
 
 - Fully autonomous AI tutoring without guardrails.
 - AI-generated content auto-publishing.
 - AI long-answer marking for HSC.
-- Autonomous AI writing assessment without admin configuration of rubric.
+- Autonomous writing assessment without admin-configured rubric.
+- Real-time AI-powered adaptive question selection during an exam session.
