@@ -111,8 +111,46 @@ hsc-ai/
 
 ## Current Milestone
 
-**Milestone 0 — Project Bootstrap** ✓
+**Milestone 1 — Identity & Platform Foundation** ✓
 
-Health endpoint: `GET http://localhost:3090/api/health`
+### Auth Endpoints
 
-Next: Milestone 1 — Auth foundation and question bank.
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | /api/v1/auth/register | None | Parent registration — returns access + refresh tokens |
+| POST | /api/v1/auth/login | None | Parent or admin login |
+| POST | /api/v1/auth/refresh | None | Rotate refresh token — returns new token pair |
+| POST | /api/v1/auth/logout | None | Revoke refresh token |
+| GET | /api/v1/me | Bearer | Current user info (role, email) |
+
+### Family Account Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | /api/v1/parents/students | Parent | Create student account (max 3) |
+| GET | /api/v1/parents/students | Parent | List active students |
+| PATCH | /api/v1/parents/students/{id} | Parent | Update student name or year level |
+| DELETE | /api/v1/parents/students/{id} | Parent | Deactivate student |
+| POST | /api/v1/students/first-login | Student | Student sets own password on first login |
+
+### Example: Register and list students
+
+```bash
+# Register parent — save the access token
+TOKEN=$(curl -s -X POST http://localhost:3090/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"me@test.com","password":"SecurePass1","display_name":"Alex"}' \
+  | jq -r .access_token)
+
+# Create a student account
+curl -s -X POST http://localhost:3090/api/v1/parents/students \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name":"Sam","year_level":5}' | jq .
+
+# List students
+curl -s http://localhost:3090/api/v1/parents/students \
+  -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+Next: Milestone 2 — Question Bank Foundation

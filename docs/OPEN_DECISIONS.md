@@ -211,26 +211,20 @@ Required before: Milestone 4 (writing assessment feature)
 
 ---
 
-### 10. Dynamic Question Pool Implementation
+### [RESOLVED] Dynamic Question Pool Implementation
 
-QUESTION_BANK.md documents two pool types: static (explicit question list) and dynamic (query-based selection at instance creation time).
+Decision: V1 implements static pools only. Dynamic (query-based) pool selection is deferred to V2+.
 
-V1 implements static pools only. Dynamic pools are documented as a future feature.
+Static pools are sufficient for the V1 exam engine. No decision needed before Milestone 2.
 
-Decision needed: Is dynamic pool selection required before public launch, or is static-only sufficient for V1?
-
-Required before: Milestone 2 (exam template builder)
+Documented in: QUESTION_BANK.md
 
 ---
 
-### 11. ExamTemplate vs ExamInstance separation in V1
+### [RESOLVED] ExamTemplate vs ExamInstance Separation
 
-QUESTION_BANK.md defines ExamTemplate (blueprint) and ExamInstance (frozen delivery) as separate entities.
+Decision: Full Template/Instance separation is required from the start. Implement both entities in Milestone 2.
 
-For V1, each template will produce exactly one active instance. The separation adds schema complexity but prevents a future migration.
+Rationale: Avoiding a future migration from a single table outweighs the cost of one extra join at implementation time.
 
-Decision needed: Implement full Template/Instance separation from the start, or use a simplified single-table approach for V1 with a migration path documented?
-
-Recommendation: Implement the full separation. The cost is one extra table join; the benefit is avoiding a painful migration when multi-instance delivery is needed.
-
-Required before: Milestone 2 (question bank implementation)
+Documented in: DATA_MODEL.md, EXAM_ENGINE.md

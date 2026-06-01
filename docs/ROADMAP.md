@@ -33,16 +33,19 @@ Goals:
 
 ## Phase 2: Accounts and Subscription Foundation
 
-Goals:
+Status: complete.
 
-- Parent registration and login
-- Student account creation by parent (family account model)
-- Student first-login password setup
-- Admin login
-- Maximum 3 students per parent (API + DB constraint)
-- Subscription and entitlement data model
-- Basic plan and entitlement checks
-- Role-based access control middleware
+Deliverables:
+
+- Parent registration and login ✓
+- Student account creation by parent (family account model) ✓
+- Student first-login password setup ✓
+- Admin login ✓
+- Maximum 3 students per parent (API + service layer) ✓
+- Subscription and entitlement data model ✓
+- Basic plan seed (all_access_monthly, all_access_annual, oc_monthly, selective_monthly) ✓
+- Role-based access control middleware ✓
+- Audit logging (registration, login, student creation/deactivation) ✓
 
 ## Phase 3: Question Bank Foundation
 
