@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.0
+
+# Database (used from Milestone 1 onward)
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.30.0
+
+# Cache / queue (used from Milestone 1 onward)
+redis[hiredis]>=5.2.0
+
+# Object storage (used from Milestone 1 onward)
+minio>=7.2.0

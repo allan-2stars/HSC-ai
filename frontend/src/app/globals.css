@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-canvas: #0b0b0b;
+  --color-surface: #212121;
+  --color-cta: #f36458;
+  --color-interactive: #0052ef;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b9b9b9;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: Inter, "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}

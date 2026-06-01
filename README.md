@@ -1,52 +1,96 @@
-# HSC Exam Platform
+# HSC AI Platform
 
-Working name: HSC Exam Platform
+NSW exam preparation for OC and Selective School — built for Raspberry Pi 5.
 
-A NSW-focused online exam preparation platform for OC and Selective School preparation first, later expanding to NAPLAN and HSC.
+## Stack
 
-This repository is currently in product and architecture specification stage. No implementation should begin until the documents in `docs/` are reviewed and accepted.
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 15, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Python 3.12 |
+| Database | PostgreSQL 16 |
+| Cache / Queue | Redis 7 |
+| Storage | MinIO |
+| Reverse proxy | Nginx |
+| Deployment | Docker Compose, ARM64, Raspberry Pi 5 |
 
-## Product Direction
+## Quick Start
 
-V1 focuses on:
+```bash
+# 1. Copy environment file and edit values
+cp .env.example .env
 
-- OC preparation
-- Selective School preparation
-- Timed exam simulation
-- Parent dashboard
-- Student attempt history
-- Admin-managed question bank
-- OCR/AI/manual question creation workflow
-- Provider-independent AI layer
+# 2. Start all services
+make up
 
-## Primary Users
+# 3. Visit the platform
+open http://localhost
 
-- Students
-- Parents
-- Administrators
+# 4. API docs
+open http://localhost/api/docs
+```
+
+## Development Commands
+
+```bash
+make up        # Start all services
+make down      # Stop all services
+make logs      # Tail all service logs
+make test      # Run all tests (backend + frontend)
+make test-be   # Run backend tests (pytest)
+make test-fe   # Run frontend tests (vitest)
+make lint      # Lint backend + frontend
+make format    # Format backend code (ruff)
+```
+
+## Project Structure
+
+```
+hsc-ai/
+├── backend/          FastAPI application
+│   ├── app/
+│   │   ├── main.py         App entry point, health endpoint
+│   │   └── core/
+│   │       └── config.py   Environment configuration
+│   └── tests/
+├── frontend/         Next.js application
+│   └── src/
+│       ├── app/            Next.js App Router pages
+│       └── components/     Shared UI components
+├── nginx/            Reverse proxy configuration
+├── docs/             Architecture and product documentation
+├── skills/           AI skill definitions
+├── docker-compose.yml
+├── .env.example
+└── Makefile
+```
 
 ## Key Rules
 
 - Parents own subscriptions and student data.
-- One parent account can manage up to 3 student accounts.
+- Maximum 3 student accounts per parent.
 - Students cannot delete attempts or modify submitted scores.
 - Every published question must have a correct answer and full explanation.
-- Admin review is mandatory before any manually entered, OCR-imported, or AI-generated question is published.
-- AI features are Premium-only except controlled trial usage.
+- Admin review is mandatory before any OCR-imported or AI-generated question is published.
+- AI features are Premium-only except limited trials.
 
-## Document Index
+## Documentation
 
-See:
+| Document | Purpose |
+|---|---|
+| [PRD](docs/PRD.md) | Product requirements |
+| [Architecture](docs/ARCHITECTURE.md) | System architecture |
+| [Data Model](docs/DATA_MODEL.md) | Database schema |
+| [Question Bank](docs/QUESTION_BANK.md) | Content hierarchy |
+| [Content Strategy](docs/CONTENT_STRATEGY.md) | Content governance |
+| [Exam Engine](docs/EXAM_ENGINE.md) | Exam session behaviour |
+| [Security & Privacy](docs/SECURITY_PRIVACY.md) | Privacy and access control |
+| [Roadmap](docs/ROADMAP.md) | Milestone plan |
 
-- `docs/PRD.md`
-- `docs/DESIGN.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DATA_MODEL.md`
-- `docs/EXAM_ENGINE.md`
-- `docs/OCR_IMPORT_PIPELINE.md`
-- `docs/AI_PROVIDER_STRATEGY.md`
-- `docs/SUBSCRIPTION_MODEL.md`
-- `docs/SECURITY_PRIVACY.md`
-- `docs/ADMIN_CONTENT_WORKFLOW.md`
-- `docs/ROADMAP.md`
-- `docs/OPEN_DECISIONS.md`
+## Current Milestone
+
+**Milestone 0 — Project Bootstrap** ✓
+
+Health endpoint: `GET /api/health`
+
+Next: Milestone 1 — Auth foundation and question bank.
