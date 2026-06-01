@@ -20,17 +20,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.v1.router import router as v1_router  # noqa: E402
+
+app.include_router(v1_router)
+
 
 @app.get("/api/health", tags=["health"])
 async def health_check() -> dict:
-    """
-    Health check endpoint.
+    """Returns service status including live database and Redis connectivity checks."""
+    from sqlalchemy import text
+    from app.core.database import engine
+    import redis.asyncio as aioredis
 
-    Returns service status. Does not verify database connectivity in M0;
-    dependency checks are added in Milestone 1 alongside migrations.
-    """
+    db_status = "error"
+    redis_status = "error"
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        pass
+
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, socket_connect_timeout=2)
+        await r.ping()
+        await r.aclose()
+        redis_status = "ok"
+    except Exception:
+        pass
+
+    overall = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
+
     return {
-        "status": "ok",
+        "status": overall,
         "service": "hsc-ai-backend",
         "version": settings.APP_VERSION,
+        "database": db_status,
+        "redis": redis_status,
     }

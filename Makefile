@@ -4,7 +4,7 @@ BACKEND_PIP  := $(BACKEND_VENV)/bin/pip
 BACKEND_PYTEST := $(BACKEND_VENV)/bin/pytest
 BACKEND_RUFF := $(BACKEND_VENV)/bin/ruff
 
-.PHONY: help up down logs test test-be test-fe lint format migrate shell-be
+.PHONY: help up down logs test test-be test-fe lint format migrate migrate-new seed shell-be create-test-db
 
 help:
 	@echo ""
@@ -18,8 +18,11 @@ help:
 	@echo "  make test-fe   Run frontend tests (vitest)"
 	@echo "  make lint      Lint backend + frontend"
 	@echo "  make format    Format backend code"
-	@echo "  make migrate   Run database migrations (Milestone 1+)"
-	@echo "  make shell-be  Open shell in backend container"
+	@echo "  make migrate         Apply pending migrations"
+	@echo "  make migrate-new     Generate new migration (name=<message>)"
+	@echo "  make seed            Seed subscription plans"
+	@echo "  make create-test-db  Create hscai_test database"
+	@echo "  make shell-be        Open shell in backend container"
 	@echo ""
 
 # ── Docker Compose ────────────────────────────────────────────────
@@ -27,7 +30,7 @@ help:
 up:
 	@cp -n .env.example .env 2>/dev/null && echo "Created .env from .env.example" || true
 	docker compose up -d
-	@echo "Services started. Frontend: http://localhost  Backend: http://localhost/api/health"
+	@echo "Services started. Web: http://localhost:3090  API: http://localhost:3090/api/health"
 
 down:
 	docker compose down
@@ -70,7 +73,17 @@ lint: install-be
 format: install-be
 	$(BACKEND_RUFF) format backend/
 
-# ── Migrations (wired up in Milestone 1) ─────────────────────────
+# ── Migrations ───────────────────────────────────────────────────
 
 migrate:
-	@echo "Migrations are configured in Milestone 1. See backend/alembic/ (future)."
+	docker compose exec backend alembic upgrade head
+
+migrate-new:
+	docker compose exec backend alembic revision --autogenerate -m "$(name)"
+
+seed:
+	docker compose exec backend python -c "import asyncio; from app.core.database import SessionLocal; from app.services.seed_service import seed_plans; asyncio.run(SessionLocal().__aenter__().send(None) or seed_plans(None))"
+	@echo "Note: run 'make seed' or call seed_plans() from a Python REPL for now"
+
+create-test-db:
+	docker compose exec postgres createdb -U hscai hscai_test 2>/dev/null || echo "Test database already exists"
