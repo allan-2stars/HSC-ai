@@ -37,6 +37,7 @@ services:
 
   # ── MinIO ────────────────────────────────────────────────────────
   # ARM64-compatible multi-arch image; console on :9001
+  # Host ports: 9190 (API) and 9191 (console) — avoids Pi conflicts on 9000/9001
   minio:
     image: minio/minio
     restart: unless-stopped
@@ -47,7 +48,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9001:9001"
+      - "9190:9000"
+      - "9191:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -97,13 +99,14 @@ services:
 
   # ── Nginx reverse proxy ──────────────────────────────────────────
   # Routes /api/* → backend:8000 and /* → frontend:3000
+  # Host port 3090 — avoids Pi conflict on 80
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "3090:80"
     depends_on:
       - backend
       - frontend

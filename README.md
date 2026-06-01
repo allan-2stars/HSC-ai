@@ -14,6 +14,20 @@ NSW exam preparation for OC and Selective School — built for Raspberry Pi 5.
 | Reverse proxy | Nginx |
 | Deployment | Docker Compose, ARM64, Raspberry Pi 5 |
 
+## Port Allocation
+
+All ports use a dedicated range to avoid conflicts with other services on the Pi.
+
+| Service | Host port | Container port | Notes |
+|---|---|---|---|
+| Web app (nginx) | **3090** | 80 | Primary entry point |
+| MinIO API | **9190** | 9000 | S3-compatible storage API |
+| MinIO Console | **9191** | 9001 | MinIO admin UI |
+| PostgreSQL | — | 5432 | Internal Docker network only |
+| Redis | — | 6379 | Internal Docker network only |
+| Backend (FastAPI) | — | 8000 | Internal; accessed via nginx at `/api` |
+| Frontend (Next.js) | — | 3000 | Internal; accessed via nginx at `/` |
+
 ## Quick Start
 
 ```bash
@@ -24,16 +38,24 @@ cp .env.example .env
 make up
 
 # 3. Visit the platform
-open http://localhost
+open http://localhost:3090
 
-# 4. API docs
-open http://localhost/api/docs
+# 4. API health check
+open http://localhost:3090/api/health
+
+# 5. API docs (Swagger UI)
+open http://localhost:3090/api/docs
+
+# 6. MinIO console (object storage admin)
+open http://localhost:9191
 ```
+
+PostgreSQL and Redis are internal Docker services and are not exposed to the host.
 
 ## Development Commands
 
 ```bash
-make up        # Start all services
+make up        # Start all services (creates .env from .env.example if missing)
 make down      # Stop all services
 make logs      # Tail all service logs
 make test      # Run all tests (backend + frontend)
@@ -91,6 +113,6 @@ hsc-ai/
 
 **Milestone 0 — Project Bootstrap** ✓
 
-Health endpoint: `GET /api/health`
+Health endpoint: `GET http://localhost:3090/api/health`
 
 Next: Milestone 1 — Auth foundation and question bank.
