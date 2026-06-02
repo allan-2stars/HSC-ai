@@ -99,9 +99,11 @@ def clean_tables(db_schema) -> Generator:
     yield
 
     async def _clean():
-        async with _engine.begin() as conn:
-            for table in reversed(Base.metadata.sorted_tables):
-                await conn.execute(table.delete())
+        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+        if table_names:
+            async with _engine.begin() as conn:
+                # TRUNCATE with CASCADE handles circular FKs (e.g. questions ↔ question_versions)
+                await conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
 
     _run(_clean())
 
@@ -133,3 +135,30 @@ def register_parent(client: TestClient, email: str = "parent@test.com", password
 
 def auth_headers(tokens: dict) -> dict:
     return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+def create_admin_and_login(
+    client: TestClient,
+    email: str = "admin@test.com",
+    password: str = "AdminPass123",
+) -> dict:
+    """Create an admin user directly in the test DB, then login to get tokens."""
+    async def _seed():
+        async with _SessionFactory() as session:
+            from app.core.security import hash_password
+            from app.models.user import AdminProfile, User, UserRole
+            user = User(
+                email=email,
+                password_hash=hash_password(password),
+                role=UserRole.admin,
+            )
+            session.add(user)
+            await session.flush()
+            profile = AdminProfile(user_id=user.id, display_name="Test Admin")
+            session.add(profile)
+            await session.commit()
+
+    _run(_seed())
+    resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
