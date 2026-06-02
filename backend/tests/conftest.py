@@ -12,6 +12,7 @@ Strategy:
 import asyncio
 import os
 from collections.abc import Generator
+from urllib.parse import urlparse, urlunparse
 
 # Override Docker-internal URLs with host-side addresses before any app imports.
 # pydantic-settings gives env vars priority over .env files, so these take effect
@@ -41,9 +42,20 @@ _db_module.engine = create_async_engine(
     poolclass=_NullPool,
 )
 
-TEST_DB_URL = "postgresql+asyncpg://hscai:change_me_in_production@localhost:5435/hscai_test"
+# Read TEST_DATABASE_URL from environment; default to Docker-internal address.
+# Inside Docker, .env provides: postgresql+asyncpg://...@postgres:5432/hscai_test
+# On the host, set TEST_DATABASE_URL to localhost:5435 for local pytest runs.
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://hscai:change_me_in_production@postgres:5432/hscai_test",
+)
 
-_engine = create_async_engine(TEST_DB_URL, echo=False, poolclass=NullPool)
+# Build admin URL (to the default 'hscai' database) by replacing only the path.
+_parsed = urlparse(TEST_DATABASE_URL)
+_admin_parsed = _parsed._replace(path="/hscai")
+ADMIN_DATABASE_URL = urlunparse(_admin_parsed)
+
+_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
 _SessionFactory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -58,8 +70,7 @@ def db_schema() -> Generator:
     """Create all tables once at session start; drop on exit."""
     async def _create():
         # Ensure hscai_test database exists
-        admin_url = TEST_DB_URL.replace("/hscai_test", "/hscai").replace(":5435/", ":5435/")
-        admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+        admin_engine = create_async_engine(ADMIN_DATABASE_URL, isolation_level="AUTOCOMMIT", poolclass=NullPool)
         async with admin_engine.connect() as conn:
             result = await conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname='hscai_test'")

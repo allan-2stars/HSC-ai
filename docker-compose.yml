@@ -71,6 +71,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:-postgresql+asyncpg://hscai:change_me_in_production@postgres:5432/hscai_test}
     volumes:
       - ./backend:/app
     depends_on:

@@ -4,7 +4,7 @@ BACKEND_PIP  := $(BACKEND_VENV)/bin/pip
 BACKEND_PYTEST := $(BACKEND_VENV)/bin/pytest
 BACKEND_RUFF := $(BACKEND_VENV)/bin/ruff
 
-.PHONY: help up down logs test test-be test-fe lint format migrate migrate-new seed shell-be create-test-db
+.PHONY: help up down logs test test-be test-fe lint format migrate migrate-new seed shell-be create-test-db install-be
 
 help:
 	@echo ""
@@ -41,17 +41,10 @@ logs:
 shell-be:
 	docker compose exec backend bash
 
-# ── Backend tests (runs locally in venv for speed) ────────────────
+# ── Backend tests (runs inside Docker container) ──────────────────
 
-$(BACKEND_VENV):
-	python3 -m venv $(BACKEND_VENV)
-
-.PHONY: install-be
-install-be: $(BACKEND_VENV)
-	$(BACKEND_PIP) install --quiet -r backend/requirements.txt -r backend/requirements-dev.txt
-
-test-be: install-be
-	$(BACKEND_PYTEST) backend/tests/ -v
+test-be:
+	docker compose exec backend python -m pytest -v
 
 # ── Frontend tests (runs locally via npm) ─────────────────────────
 
@@ -63,6 +56,13 @@ test-fe:
 test: test-be test-fe
 
 # ── Linting ───────────────────────────────────────────────────────
+
+$(BACKEND_VENV):
+	python3 -m venv $(BACKEND_VENV)
+
+.PHONY: install-be
+install-be: $(BACKEND_VENV)
+	$(BACKEND_PIP) install --quiet -r backend/requirements.txt -r backend/requirements-dev.txt
 
 lint: install-be
 	$(BACKEND_RUFF) check backend/
