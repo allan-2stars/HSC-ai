@@ -12,3 +12,9 @@ from app.models.subscription import (  # noqa: F401
     SubscriptionPlan,
 )
 from app.models.audit import AuditLog  # noqa: F401
+from app.models.content import (  # noqa: F401
+    ExamType,
+    SkillTag,
+    Subject,
+    Topic,
+)
