@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.models.user import User, UserRole
+from app.models.user import AdminProfile, User, UserRole
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -51,3 +51,14 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
     return user
+
+
+async def get_current_admin_profile(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminProfile:
+    result = await db.execute(select(AdminProfile).where(AdminProfile.user_id == admin.id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Admin profile not found")
+    return profile
