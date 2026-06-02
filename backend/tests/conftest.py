@@ -88,9 +88,11 @@ def clean_tables(db_schema) -> Generator:
     yield
 
     async def _clean():
-        async with _engine.begin() as conn:
-            for table in reversed(Base.metadata.sorted_tables):
-                await conn.execute(table.delete())
+        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+        if table_names:
+            async with _engine.begin() as conn:
+                # TRUNCATE with CASCADE handles circular FKs (e.g. questions ↔ question_versions)
+                await conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
 
     _run(_clean())
 

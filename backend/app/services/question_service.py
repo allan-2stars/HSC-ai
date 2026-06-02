@@ -179,7 +179,7 @@ async def transition_status(
     allowed = _VALID_TRANSITIONS.get(question.status, frozenset())
     if new_status not in allowed:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"Cannot transition from '{question.status}' to '{new_status}'",
         )
 
