@@ -26,7 +26,7 @@ def test_parent_can_create_student(client: TestClient):
 def test_student_credentials_returned_on_creation(client: TestClient):
     tokens = register_parent(client)
     student = _create_student(client, tokens)
-    assert student["login_email"].endswith("@students.hscai.local")
+    assert "@students.hscai.internal" in student["login_email"]
     assert len(student["temp_password"]) >= 8
 
 

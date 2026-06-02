@@ -42,6 +42,198 @@ export interface StudentResponse {
   temp_password?: string;
 }
 
+// ── Exam Engine Types ────────────────────────────────────────
+
+export interface ExamAvailable {
+  id: string;
+  title: string;
+  duration_minutes: number;
+  question_count: number;
+  total_marks: number;
+}
+
+export interface AttemptQuestion {
+  exam_instance_question_id: string;
+  question_id: string;
+  question_version_id: string;
+  stem: string;
+  correct_answer: string | null;
+  full_explanation: string;
+  marks: number;
+  options_json: { label: string; text: string; is_correct: boolean; explanation?: string }[] | null;
+  order_index: number;
+}
+
+export interface AttemptStartResponse {
+  attempt_id: string;
+  exam_instance_id: string;
+  title: string;
+  duration_minutes: number;
+  started_at: string;
+  expires_at: string;
+  total_questions: number;
+  questions: AttemptQuestion[];
+}
+
+export interface AttemptAnswerResponse {
+  id: string;
+  exam_instance_question_id: string;
+  selected_option: string | null;
+  is_correct: boolean | null;
+  answered_at: string;
+}
+
+export interface AttemptSubmitResponse {
+  attempt_id: string;
+  status: string;
+  score_raw: number;
+  score_percent: number;
+  total_questions: number;
+  correct_count: number;
+  submitted_at: string;
+}
+
+export interface AttemptResultQuestion {
+  exam_instance_question_id: string;
+  question_id: string;
+  stem: string;
+  correct_answer: string | null;
+  full_explanation: string;
+  marks: number;
+  options_json: { label: string; text: string; is_correct: boolean; explanation?: string }[] | null;
+  order_index: number;
+  selected_option: string | null;
+  is_correct: boolean | null;
+  marks_awarded: number;
+}
+
+export interface AttemptResultResponse {
+  attempt_id: string;
+  exam_instance_id: string;
+  title: string;
+  status: string;
+  started_at: string;
+  expires_at: string;
+  submitted_at: string | null;
+  score_raw: number | null;
+  score_percent: number | null;
+  total_questions: number;
+  correct_count: number | null;
+  questions: AttemptResultQuestion[];
+}
+
+export interface AttemptListEntry {
+  id: string;
+  exam_instance_id: string;
+  exam_title: string;
+  status: string;
+  started_at: string;
+  submitted_at: string | null;
+  score_percent: number | null;
+  total_questions: number;
+  correct_count: number | null;
+}
+
+export interface StudentSummary {
+  total_attempts: number;
+  average_score: number;
+  best_score: number;
+  latest_score: number;
+  total_questions_answered: number;
+  total_correct_answers: number;
+  overall_accuracy: number;
+}
+
+export interface TopicPerfItem {
+  topic_id: string;
+  topic_name: string;
+  attempts: number;
+  correct_count: number;
+  accuracy_rate: number;
+}
+
+export interface SkillPerfItem {
+  skill_id: string;
+  skill_name: string;
+  attempts: number;
+  correct_count: number;
+  accuracy_rate: number;
+}
+
+export interface WeakStrongItem {
+  id: string;
+  name: string;
+  accuracy_rate: number;
+  attempts: number;
+}
+
+export interface RecommendationItem {
+  type: string;
+  target_id: string;
+  target_name: string;
+  message: string;
+}
+
+export interface SlowTopicItem {
+  id: string;
+  name: string;
+  average_time_seconds: number;
+  attempts: number;
+}
+
+export interface RecommendationsResponse {
+  weak_topics: WeakStrongItem[];
+  strong_topics: WeakStrongItem[];
+  weak_skills: WeakStrongItem[];
+  strong_skills: WeakStrongItem[];
+  slow_topics: SlowTopicItem[];
+  recommendations: RecommendationItem[];
+}
+
+export interface StudentProgressResponse {
+  summary: StudentSummary;
+  weak_topics: WeakStrongItem[];
+  strong_topics: WeakStrongItem[];
+  weak_skills: WeakStrongItem[];
+  strong_skills: WeakStrongItem[];
+  slow_topics: SlowTopicItem[];
+}
+
+export interface TrendItem {
+  completed_at: string;
+  score_percent: number;
+  exam_title: string;
+}
+
+export interface AssignmentItem {
+  id: string;
+  student_id: string;
+  exam_instance_id: string;
+  title_snapshot: string;
+  due_at: string | null;
+  status: "assigned" | "started" | "completed" | "overdue" | "cancelled";
+  student_name?: string | null;
+  created_at: string;
+}
+
+export interface AssignmentSummary {
+  assigned: number;
+  started: number;
+  completed: number;
+  overdue: number;
+  cancelled: number;
+}
+
+export interface ExamHistoryItem {
+  attempt_id: string;
+  exam_title: string;
+  status: string;
+  score_percent: number | null;
+  total_questions: number;
+  correct_count: number | null;
+  completed_at: string | null;
+}
+
 export const api = {
   register: (email: string, password: string, display_name: string) =>
     request<TokenResponse>("/v1/auth/register", {
@@ -74,5 +266,113 @@ export const api = {
     request<StudentResponse>("/v1/parents/students", {
       method: "POST",
       body: JSON.stringify({ display_name, year_level }),
+    }, token),
+
+  // ── Exam Engine ────────────────────────────────────────────
+
+  listAvailableExams: (token: string) =>
+    request<ExamAvailable[]>("/v1/exams/available", {}, token),
+
+  startAttempt: (instanceId: string, token: string) =>
+    request<AttemptStartResponse>(`/v1/exams/${instanceId}/attempts/start`, {
+      method: "POST",
+    }, token),
+
+  getAttempt: (attemptId: string, token: string) =>
+    request<AttemptStartResponse>(`/v1/attempts/${attemptId}`, {}, token),
+
+  saveAnswer: (
+    attemptId: string,
+    examInstanceQuestionId: string,
+    selectedOption: string | null,
+    token: string,
+    timeSpentSeconds: number = 0,
+  ) =>
+    request<AttemptAnswerResponse>(`/v1/attempts/${attemptId}/answers`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        exam_instance_question_id: examInstanceQuestionId,
+        selected_option: selectedOption,
+        time_spent_seconds: timeSpentSeconds,
+      }),
+    }, token),
+
+  submitAttempt: (attemptId: string, token: string) =>
+    request<AttemptSubmitResponse>(`/v1/attempts/${attemptId}/submit`, {
+      method: "POST",
+    }, token),
+
+  getAttemptResult: (attemptId: string, token: string) =>
+    request<AttemptResultResponse>(`/v1/attempts/${attemptId}/result`, {}, token),
+
+  listMyAttempts: (token: string) =>
+    request<AttemptListEntry[]>(`/v1/students/me/attempts`, {}, token),
+
+  // ── Analytics ─────────────────────────────────────────────────
+
+  getStudentSummary: (studentId: string, token: string) =>
+    request<StudentSummary>(`/v1/parents/students/${studentId}/analytics/summary`, {}, token),
+
+  getStudentTopics: (studentId: string, token: string) =>
+    request<{ topics: TopicPerfItem[] }>(`/v1/parents/students/${studentId}/analytics/topics`, {}, token),
+
+  getStudentSkills: (studentId: string, token: string) =>
+    request<{ skills: SkillPerfItem[] }>(`/v1/parents/students/${studentId}/analytics/skills`, {}, token),
+
+  getStudentRecommendations: (studentId: string, token: string) =>
+    request<RecommendationsResponse>(`/v1/parents/students/${studentId}/analytics/recommendations`, {}, token),
+
+  getStudentTrend: (studentId: string, token: string, limit: number = 20) =>
+    request<TrendItem[]>(`/v1/parents/students/${studentId}/analytics/trend?limit=${limit}`, {}, token),
+
+  getMyProgress: (token: string) =>
+    request<StudentProgressResponse>("/v1/students/me/progress", {}, token),
+
+  getMyTrend: (token: string, limit: number = 20) =>
+    request<TrendItem[]>(`/v1/students/me/trend?limit=${limit}`, {}, token),
+
+  getMyHistory: (token: string) =>
+    request<ExamHistoryItem[]>("/v1/students/me/history", {}, token),
+
+  // ── Assignments ───────────────────────────────────────────────
+
+  createAssignment: (studentId: string, examInstanceId: string, dueAt: string | null, token: string) =>
+    request<AssignmentItem>(`/v1/parents/students/${studentId}/assignments`, {
+      method: "POST",
+      body: JSON.stringify({ exam_instance_id: examInstanceId, due_at: dueAt }),
+    }, token),
+
+  listStudentAssignments: (studentId: string, token: string) =>
+    request<AssignmentItem[]>(`/v1/parents/students/${studentId}/assignments`, {}, token),
+
+  listAllAssignments: (token: string) =>
+    request<AssignmentItem[]>(`/v1/parents/assignments`, {}, token),
+
+  updateAssignment: (assignmentId: string, data: { due_at?: string | null; status?: string }, token: string) =>
+    request<AssignmentItem>(`/v1/assignments/${assignmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }, token),
+
+  getAssignmentSummary: (studentId: string, token: string) =>
+    request<AssignmentSummary>(`/v1/parents/students/${studentId}/assignment-summary`, {}, token),
+
+  getMyAssignments: (token: string) =>
+    request<AssignmentItem[]>("/v1/students/me/assignments", {}, token),
+
+  getMyAssignment: (assignmentId: string, token: string) =>
+    request<AssignmentItem>(`/v1/students/me/assignments/${assignmentId}`, {}, token),
+
+  startAttemptWithAssignment: (instanceId: string, assignmentId: string, token: string) =>
+    request<AttemptStartResponse>(`/v1/exams/${instanceId}/attempts/start?assignment_id=${assignmentId}`, {
+      method: "POST",
+    }, token),
+
+  // ── Integrity ────────────────────────────────────────────────
+
+  recordIntegrityEvent: (attemptId: string, eventType: string, token: string) =>
+    request<void>(`/v1/attempts/${attemptId}/integrity-event`, {
+      method: "POST",
+      body: JSON.stringify({ event_type: eventType }),
     }, token),
 };

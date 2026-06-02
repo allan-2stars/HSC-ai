@@ -61,7 +61,7 @@ async def create_student(
         )
 
     short_id = str(uuid4())[:8]
-    login_email = f"s{short_id}@students.hscai.local"
+    login_email = f"s{short_id}@students.hscai.internal"
     temp_password = initial_password or _generate_password()
 
     student_user = User(

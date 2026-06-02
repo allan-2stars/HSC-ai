@@ -33,3 +33,24 @@ from app.models.question import (  # noqa: F401
     SourceType,
     question_skill_tags,
 )
+from app.models.exam import (  # noqa: F401
+    Attempt,
+    AttemptAnswer,
+    AttemptIntegrityEvent,
+    AttemptStatus,
+    ExamInstance,
+    ExamInstanceQuestion,
+    ExamInstanceStatus,
+    ExamSection,
+    ExamSectionQuestion,
+    ExamTemplate,
+    ExamTemplateStatus,
+)
+from app.models.analytics import (  # noqa: F401
+    SkillPerformance,
+    TopicPerformance,
+)
+from app.models.assignment import (  # noqa: F401
+    AssignedExam,
+    AssignmentStatus,
+)

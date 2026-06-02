@@ -54,9 +54,29 @@ export default function AccountPage() {
       </div>
 
       {user.role === "parent" && (
-        <div className="mt-6">
-          <a href="/students" className="text-interactive hover:underline text-sm">
+        <div className="mt-6 space-y-3">
+          <a href="/students" className="block text-interactive hover:underline text-sm">
             Manage students →
+          </a>
+          <a href="/parent" className="block text-interactive hover:underline text-sm">
+            View Dashboard →
+          </a>
+          <a href="/parent/assignments" className="block text-interactive hover:underline text-sm">
+            Manage Assignments →
+          </a>
+        </div>
+      )}
+
+      {user.role === "student" && (
+        <div className="mt-6 space-y-3">
+          <a href="/exams" className="block text-interactive hover:underline text-sm">
+            Available Exams →
+          </a>
+          <a href="/me/progress" className="block text-interactive hover:underline text-sm">
+            My Progress →
+          </a>
+          <a href="/me/assignments" className="block text-interactive hover:underline text-sm">
+            My Assignments →
           </a>
         </div>
       )}

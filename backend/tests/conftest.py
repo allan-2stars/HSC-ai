@@ -162,3 +162,30 @@ def create_admin_and_login(
     resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def create_student_and_login(
+    client: TestClient,
+    parent_tokens: dict | None = None,
+    display_name: str = "Test Student",
+    year_level: int = 5,
+) -> dict:
+    """Create a parent (if needed), create a student, and login as the student."""
+    if parent_tokens is None:
+        parent_tokens = register_parent(client)
+
+    resp = client.post(
+        "/api/v1/parents/students",
+        json={"display_name": display_name, "year_level": year_level},
+        headers=auth_headers(parent_tokens),
+    )
+    assert resp.status_code == 201, resp.text
+    student_data = resp.json()
+
+    # Login as the student
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        json={"email": student_data["login_email"], "password": student_data["temp_password"]},
+    )
+    assert login_resp.status_code == 200, login_resp.text
+    return login_resp.json()

@@ -62,31 +62,80 @@ Goals:
 
 ## Phase 4: Exam Engine MVP
 
-Goals:
+Status: **M3A (MCQ Engine) complete.** M3B (Writing, AI feedback) deferred.
 
-- Exam builder (fixed exams)
-- Timed MCQ exam mode
+M3A deliverables:
+
+- Exam builder (fixed exams) ✓
+- Timed MCQ exam mode ✓
+- Attempt creation and answer capture ✓
+- Auto-submit on timeout ✓
+- Auto-marking (MCQ) ✓
+- Immutable attempt records (service-layer checks) ✓
+- Student review after submission ✓
+- Audit logging (exam lifecycle events) ✓
+- Version freezing at ExamInstance publish time ✓
+- Admin exam template/instance management APIs ✓
+- Student attempt history ✓
+
+M3B (deferred):
+
 - Writing mode (Selective writing component)
-- Attempt creation and answer capture
 - Writing response capture
-- Auto-submit on timeout
-- Auto-marking (MCQ)
-- Immutable attempt records (DB trigger)
 - Immutable writing responses
-- Student review after submission
 - AI writing feedback (async, with mandatory disclaimer)
 - Integrity event logging
 
-## Phase 5: Parent Dashboard
+## Phase 5: Parent Dashboard & Progress Analytics
+
+Status: **M4 complete.**
+
+M4 deliverables:
+
+- TopicPerformance and SkillPerformance models ✓
+- On-demand analytics calculation (no background jobs needed) ✓
+- Student summary: total attempts, average/best/latest score, accuracy ✓
+- Topic-level performance aggregation from attempt data ✓
+- Skill-level performance aggregation via question→skill_tag mappings ✓
+- Rule-based weakness/strength detection (accuracy < 60% → weakness, > 85% → strength) ✓
+- Rule-based recommendation text generation ✓
+- Parent-only analytics APIs (summary, topics, skills, recommendations) ✓
+- Parent ownership enforcement (cannot view other parents' students) ✓
+- Student self-view: own progress, strengths, weaknesses ✓
+- Exam history endpoint with pagination ✓
+- Parent dashboard UI: student cards → detail page with stats/tables ✓
+- Student progress UI: summary, recent exams, strengths/weaknesses ✓
+- 12 backend tests, 3 frontend tests ✓
+
+M4.5 deliverables (Exam Integrity & Trend Analytics):
+
+- AttemptIntegrityEvent model (tab_hidden, tab_visible, fullscreen_enter/ex, copy/paste) ✓
+- POST /attempts/{id}/integrity-event endpoint ✓
+- Integrity summary aggregation on attempt submission ✓
+- time_spent_seconds on AttemptAnswer (persisted, accumulates across saves) ✓
+- Backend trend endpoints: parent + student, oldest→newest, limit support ✓
+- Enhanced recommendations: slow_topics, average_time_seconds, time-based recs ✓
+- Frontend integrity detection (visibilitychange, fullscreenchange, copy/paste) ✓
+- Frontend time tracking per question ✓
+- TrendChart component (SVG line chart, zero dependencies) ✓
+- Slow topics display on parent + student dashboards ✓
+- 13 backend tests, frontend integrity/time/tracking in page ✓
+
+M4.6 deliverables (Parent Assignment System):
+
+- AssignedExam model (student_id, exam_instance_id, assigned_by_parent_id, title_snapshot, due_at, status) ✓
+- Assignment status lifecycle: assigned → started → completed | overdue | cancelled ✓
+- assigned_exam_id on Attempt — links attempt back to assignment ✓
+- Parent APIs: create, list (per-student and all), update/cancel, summary ✓
+- Student APIs: list own, detail, due date display ✓
+- Expired completion check on-demand (no scheduler) ✓
+- Parent dashboard assignment page with status badges and cancel ✓
+- Student assignment page with Start Exam / Continue buttons ✓
+- Assignment-aware start: query param assignment_id links attempt ✓
+- Audit logging: created, updated, cancelled, started, completed ✓
+- 14 backend tests, 5 frontend tests ✓
 
 Goals:
-
-- Student selector
-- Recent attempts
-- Topic weaknesses (rule-based)
-- Assigned exams
-- Basic progress charts
-- Writing attempt history
 
 ## Phase 6: OCR Import Pipeline
 

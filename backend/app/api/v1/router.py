@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, parents, students
+from app.api.v1 import analytics, assignments, auth, exams, parents, students
 from app.api.v1.admin import content as admin_content
+from app.api.v1.admin import exams as admin_exams
 from app.api.v1.admin import pools as admin_pools
 from app.api.v1.admin import questions as admin_questions
 
@@ -12,3 +13,7 @@ router.include_router(students.router)
 router.include_router(admin_content.router)
 router.include_router(admin_questions.router)
 router.include_router(admin_pools.router)
+router.include_router(admin_exams.router)
+router.include_router(exams.router)
+router.include_router(analytics.router)
+router.include_router(assignments.router)
