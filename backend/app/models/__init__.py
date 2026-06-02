@@ -18,3 +18,18 @@ from app.models.content import (  # noqa: F401
     Subject,
     Topic,
 )
+from app.models.question import (  # noqa: F401
+    ContentOwnershipType,
+    DifficultyLevel,
+    MediaType,
+    PoolType,
+    Question,
+    QuestionMedia,
+    QuestionPool,
+    QuestionPoolMembership,
+    QuestionStatus,
+    QuestionType,
+    QuestionVersion,
+    SourceType,
+    question_skill_tags,
+)
