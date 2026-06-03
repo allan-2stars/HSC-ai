@@ -85,7 +85,9 @@ def db_schema() -> Generator:
 
     async def _drop():
         async with _engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+            # Use CASCADE to handle cross-table dependencies
+            for table in reversed(Base.metadata.sorted_tables):
+                await conn.execute(text(f'DROP TABLE IF EXISTS "{table.name}" CASCADE'))
         await _engine.dispose()
 
     _run(_create())

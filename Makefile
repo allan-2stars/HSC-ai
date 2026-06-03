@@ -4,7 +4,7 @@ BACKEND_PIP  := $(BACKEND_VENV)/bin/pip
 BACKEND_PYTEST := $(BACKEND_VENV)/bin/pytest
 BACKEND_RUFF := $(BACKEND_VENV)/bin/ruff
 
-.PHONY: help up down logs test test-be test-fe lint format migrate migrate-new seed shell-be create-test-db install-be
+.PHONY: help up down logs test test-be test-fe lint format migrate migrate-new seed seed-dev shell-be create-test-db install-be
 
 help:
 	@echo ""
@@ -21,7 +21,9 @@ help:
 	@echo "  make migrate         Apply pending migrations"
 	@echo "  make migrate-new     Generate new migration (name=<message>)"
 	@echo "  make seed            Seed subscription plans"
-	@echo "  make create-test-db  Create hscai_test database"
+	@echo "  make seed            Seed subscription plans
+  make seed-dev        Full development seed (users, questions, exams)
+  make create-test-db  Create hscai_test database"
 	@echo "  make shell-be        Open shell in backend container"
 	@echo ""
 
@@ -84,6 +86,9 @@ migrate-new:
 seed:
 	docker compose exec backend python -c "import asyncio; from app.core.database import SessionLocal; from app.services.seed_service import seed_plans; asyncio.run(SessionLocal().__aenter__().send(None) or seed_plans(None))"
 	@echo "Note: run 'make seed' or call seed_plans() from a Python REPL for now"
+
+seed-dev:
+	docker compose exec backend python -m app.seed
 
 create-test-db:
 	docker compose exec postgres createdb -U hscai hscai_test 2>/dev/null || echo "Test database already exists"

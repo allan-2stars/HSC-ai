@@ -224,6 +224,78 @@ export interface AssignmentSummary {
   cancelled: number;
 }
 
+export interface CurriculumFramework {
+  id: string;
+  name: string;
+  description: string | null;
+  exam_type_id: string | null;
+  version: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CurriculumOutcome {
+  id: string;
+  framework_id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface OutcomeCoverageItem {
+  outcome_id: string;
+  code: string;
+  title: string;
+  approved_question_count: number;
+  draft_question_count: number;
+  total_question_count: number;
+  coverage_status: "red" | "amber" | "green";
+}
+
+export interface CoverageReport {
+  framework_id: string;
+  framework_name: string;
+  total_outcomes: number;
+  mapped_outcomes: number;
+  covered_outcomes: number;
+  coverage_percentage: number;
+  outcomes: OutcomeCoverageItem[];
+}
+
+export interface FrameworkSummaryItem {
+  framework_id: string;
+  framework_name: string;
+  total_outcomes: number;
+  mapped_outcomes: number;
+  covered_outcomes: number;
+  coverage_percentage: number;
+  red_count: number;
+  amber_count: number;
+  green_count: number;
+}
+
+export interface TopGapItem {
+  framework_name: string;
+  outcome_code: string;
+  outcome_title: string;
+  outcome_id: string;
+}
+
+export interface CurriculumDashboard {
+  overall_coverage_pct: number;
+  total_frameworks: number;
+  total_outcomes: number;
+  total_mapped: number;
+  total_covered: number;
+  unmapped_question_count: number;
+  all_red_outcome_count: number;
+  frameworks: FrameworkSummaryItem[];
+  top_gaps: TopGapItem[];
+}
+
 export interface ExamHistoryItem {
   attempt_id: string;
   exam_title: string;
@@ -367,6 +439,22 @@ export const api = {
     request<AttemptStartResponse>(`/v1/exams/${instanceId}/attempts/start?assignment_id=${assignmentId}`, {
       method: "POST",
     }, token),
+
+  // ── Curriculum ───────────────────────────────────────────────
+
+  getCurriculumDashboard: (token: string) =>
+    request<CurriculumDashboard>("/v1/curriculum/dashboard", {}, token),
+
+  listFrameworks: (token: string) =>
+    request<CurriculumFramework[]>("/v1/curriculum/frameworks", {}, token),
+
+  getFrameworkCoverage: (frameworkId: string, token: string) =>
+    request<CoverageReport>(`/v1/curriculum/coverage/${frameworkId}`, {}, token),
+
+  getUnmappedQuestions: (token: string) =>
+    request<{ question_id: string; stem: string; status: string; subject_name: string | null }[]>(
+      "/v1/curriculum/unmapped-questions", {}, token
+    ),
 
   // ── Integrity ────────────────────────────────────────────────
 

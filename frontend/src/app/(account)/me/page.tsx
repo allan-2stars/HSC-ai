@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type MeResponse } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
+import Link from "next/link";
 
 export default function AccountPage() {
   const [user, setUser] = useState<MeResponse | null>(null);
@@ -53,33 +54,54 @@ export default function AccountPage() {
         </div>
       </div>
 
-      {user.role === "parent" && (
-        <div className="mt-6 space-y-3">
-          <a href="/students" className="block text-interactive hover:underline text-sm">
-            Manage students →
-          </a>
-          <a href="/parent" className="block text-interactive hover:underline text-sm">
-            View Dashboard →
-          </a>
-          <a href="/parent/assignments" className="block text-interactive hover:underline text-sm">
-            Manage Assignments →
-          </a>
-        </div>
-      )}
+      <div className="mt-8 space-y-6">
+        {user.role === "parent" && (
+          <>
+            <NavSection title="Students">
+              <NavLink href="/students" label="Manage Students" />
+            </NavSection>
+            <NavSection title="Dashboard">
+              <NavLink href="/parent" label="View Dashboard" />
+              <NavLink href="/parent/assignments" label="Manage Assignments" />
+            </NavSection>
+          </>
+        )}
 
-      {user.role === "student" && (
-        <div className="mt-6 space-y-3">
-          <a href="/exams" className="block text-interactive hover:underline text-sm">
-            Available Exams →
-          </a>
-          <a href="/me/progress" className="block text-interactive hover:underline text-sm">
-            My Progress →
-          </a>
-          <a href="/me/assignments" className="block text-interactive hover:underline text-sm">
-            My Assignments →
-          </a>
-        </div>
-      )}
+        {user.role === "admin" && (
+          <NavSection title="Administration">
+            <NavLink href="/admin/curriculum" label="Curriculum Dashboard" />
+          </NavSection>
+        )}
+
+        {user.role === "student" && (
+          <>
+            <NavSection title="Exams">
+              <NavLink href="/exams" label="Available Exams" />
+              <NavLink href="/me/assignments" label="My Assignments" />
+            </NavSection>
+            <NavSection title="Progress">
+              <NavLink href="/me/progress" label="My Progress" />
+            </NavSection>
+          </>
+        )}
+      </div>
     </div>
+  );
+}
+
+function NavSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="text-xs text-text-tertiary uppercase tracking-wider mb-2">{title}</h2>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function NavLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="block text-interactive hover:underline text-sm py-1">
+      {label} →
+    </Link>
   );
 }

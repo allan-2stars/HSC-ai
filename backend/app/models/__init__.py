@@ -54,3 +54,8 @@ from app.models.assignment import (  # noqa: F401
     AssignedExam,
     AssignmentStatus,
 )
+from app.models.curriculum import (  # noqa: F401
+    CurriculumFramework,
+    CurriculumOutcome,
+    QuestionOutcomeMapping,
+)
