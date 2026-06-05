@@ -6,8 +6,17 @@ import Link from "next/link";
 import { api, type AttemptResultResponse } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import MCQOption from "@/components/MCQOption";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function ExamResultPage() {
+  return (
+    <RoleGuard roles={["student"]}>
+      <ExamResult />
+    </RoleGuard>
+  );
+}
+
+function ExamResult() {
   const params = useParams();
   const attemptId = params.attemptId as string;
 

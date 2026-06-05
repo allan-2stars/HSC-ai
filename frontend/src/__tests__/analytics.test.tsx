@@ -5,8 +5,14 @@ import * as auth from "@/lib/auth";
 // Mock next/navigation
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: vi.fn() }),
   useParams: () => ({ id: "student-1" }),
+}));
+
+let _testRole = "parent";
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "p@test.com", role: _testRole, is_active: true }, loading: false, role: _testRole, refresh: vi.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 // We import the page lazily to avoid the mock timing issues
@@ -133,6 +139,7 @@ describe("StudentAnalyticsPage", () => {
 describe("StudentProgressPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _testRole = "student";
     (auth.getAccessToken as any).mockReturnValue("test-token");
   });
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -193,9 +193,174 @@ async def transition_status(
         )
 
     question.status = new_status
+    now_dt = datetime.now(tz=timezone.utc)
+    if new_status in (QuestionStatus.approved, QuestionStatus.rejected):
+        question.reviewed_at = now_dt
+    if new_status == QuestionStatus.published:
+        question.published_at = now_dt
+
     await db.commit()
 
     return await get_question(question_id, db)
+
+
+# ── Review workflow ──────────────────────────────────────────────────────────
+
+async def submit_for_review(
+    question_id: str, admin_id: str, db: AsyncSession,
+    quality_score: int | None = None, review_notes: str | None = None,
+) -> Question:
+    question = await get_question(question_id, db)
+    if question.status != QuestionStatus.draft:
+        raise HTTPException(status_code=422, detail="Only draft questions can be submitted for review")
+    if quality_score is not None and quality_score not in range(1, 6):
+        raise HTTPException(status_code=422, detail="quality_score must be 1-5")
+
+    question.status = QuestionStatus.review
+    if quality_score is not None:
+        question.quality_score = quality_score
+    if review_notes is not None:
+        question.review_notes = review_notes
+
+    await db.commit()
+    return await get_question(question_id, db)
+
+
+async def approve_question(
+    question_id: str, admin_id: str, db: AsyncSession,
+) -> Question:
+    question = await get_question(question_id, db)
+    if question.status != QuestionStatus.review:
+        raise HTTPException(status_code=422, detail="Only questions in review can be approved")
+    question.status = QuestionStatus.approved
+    question.reviewed_by_admin_id = admin_id
+    question.reviewed_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+    return await get_question(question_id, db)
+
+
+async def publish_question(
+    question_id: str, db: AsyncSession,
+) -> Question:
+    question = await get_question(question_id, db)
+    if question.status != QuestionStatus.approved:
+        raise HTTPException(status_code=422, detail="Only approved questions can be published")
+    if question.content_ownership in _BLOCKED_OWNERSHIP:
+        raise HTTPException(status_code=409, detail="Cannot publish restricted content")
+    question.status = QuestionStatus.published
+    question.published_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+    return await get_question(question_id, db)
+
+
+async def archive_question(
+    question_id: str, db: AsyncSession,
+) -> Question:
+    question = await get_question(question_id, db)
+    if question.status not in (QuestionStatus.published, QuestionStatus.approved, QuestionStatus.rejected):
+        raise HTTPException(status_code=422, detail="Only published/approved/rejected questions can be archived")
+    question.status = QuestionStatus.archived
+    await db.commit()
+    return await get_question(question_id, db)
+
+
+async def list_review_queue(
+    db: AsyncSession,
+    status_filter: QuestionStatus | None = None,
+    subject_id: str | None = None,
+    exam_type_id: str | None = None,
+    source_type: SourceType | None = None,
+) -> list[Question]:
+    query = select(Question).options(
+        selectinload(Question.current_version),
+        selectinload(Question.current_version),
+    )
+    if status_filter is not None:
+        query = query.where(Question.status == status_filter)
+    else:
+        query = query.where(Question.status.in_([
+            QuestionStatus.draft, QuestionStatus.review, QuestionStatus.approved,
+        ]))
+    if subject_id:
+        query = query.where(Question.subject_id == subject_id)
+    if exam_type_id:
+        query = query.where(Question.exam_type_id == exam_type_id)
+    if source_type:
+        query = query.where(Question.source_type == source_type)
+
+    result = await db.execute(query.order_by(Question.updated_at.desc()).limit(200))
+    return list(result.scalars().all())
+
+
+async def bulk_action(
+    question_ids: list[str], action: str, admin_id: str, db: AsyncSession,
+) -> int:
+    """Apply action to multiple questions. Returns count of affected questions."""
+    valid_actions = {"approve", "publish", "archive"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=422, detail=f"Invalid bulk action: {action}")
+
+    handler = {
+        "approve": approve_question,
+        "publish": publish_question,
+        "archive": archive_question,
+    }
+
+    count = 0
+    for qid in question_ids:
+        try:
+            if action == "approve":
+                await handler[action](qid, admin_id, db)
+            else:
+                await handler[action](qid, db)
+            count += 1
+        except HTTPException:
+            continue
+    return count
+
+
+async def get_content_stats(db: AsyncSession) -> dict:
+    """Return counts by status and source for dashboard."""
+    from sqlalchemy import func as sa_func
+
+    # Status counts
+    result = await db.execute(
+        select(Question.status, sa_func.count(Question.id))
+        .group_by(Question.status)
+    )
+    status_counts = {row[0].value if hasattr(row[0], "value") else str(row[0]): row[1] for row in result.fetchall()}
+
+    # Source counts
+    result = await db.execute(
+        select(Question.source_type, sa_func.count(Question.id))
+        .group_by(Question.source_type)
+    )
+    source_counts = {row[0].value if hasattr(row[0], "value") else str(row[0]): row[1] for row in result.fetchall()}
+
+    # Published this week/month
+    now_dt = datetime.now(tz=timezone.utc)
+    week_ago = now_dt - timedelta(days=7)
+    month_ago = now_dt - timedelta(days=30)
+
+    result = await db.execute(
+        select(sa_func.count(Question.id))
+        .where(Question.status == QuestionStatus.published, Question.published_at >= week_ago)
+    )
+    published_this_week = result.scalar_one()
+
+    result = await db.execute(
+        select(sa_func.count(Question.id))
+        .where(Question.status == QuestionStatus.published, Question.published_at >= month_ago)
+    )
+    published_this_month = result.scalar_one()
+
+    return {
+        "total": sum(status_counts.values()),
+        "by_status": status_counts,
+        "by_source": source_counts,
+        "published_this_week": published_this_week,
+        "published_this_month": published_this_month,
+    }
 
 
 # ── Pool management ───────────────────────────────────────────────────────────

@@ -5,8 +5,17 @@ import Link from "next/link";
 import { api, type StudentProgressResponse, type ExamHistoryItem, type TrendItem } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import TrendChart from "@/components/TrendChart";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function StudentProgressPage() {
+  return (
+    <RoleGuard roles={["student"]}>
+      <StudentProgress />
+    </RoleGuard>
+  );
+}
+
+function StudentProgress() {
   const [progress, setProgress] = useState<StudentProgressResponse | null>(null);
   const [history, setHistory] = useState<ExamHistoryItem[]>([]);
   const [trend, setTrend] = useState<TrendItem[]>([]);

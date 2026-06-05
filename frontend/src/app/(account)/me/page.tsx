@@ -62,6 +62,7 @@ export default function AccountPage() {
             </NavSection>
             <NavSection title="Dashboard">
               <NavLink href="/parent" label="View Dashboard" />
+              <NavLink href="/parent/progress" label="Student Progress" />
               <NavLink href="/parent/assignments" label="Manage Assignments" />
             </NavSection>
           </>
@@ -70,6 +71,10 @@ export default function AccountPage() {
         {user.role === "admin" && (
           <NavSection title="Administration">
             <NavLink href="/admin/curriculum" label="Curriculum Dashboard" />
+            <NavLink href="/admin/content/review" label="Content Review" />
+            <NavLink href="/admin/content/ocr" label="OCR Import" />
+            <NavLink href="/admin/content/import" label="Bulk Import" />
+            <NavLink href="/admin/content/ai-generate" label="AI Generate" />
           </NavSection>
         )}
 

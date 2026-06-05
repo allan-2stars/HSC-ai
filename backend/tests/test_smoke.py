@@ -103,3 +103,109 @@ def test_admin_curriculum_accessible(client: TestClient):
     data = resp.json()
     assert "total_frameworks" in data
     assert "top_gaps" in data
+
+
+# ── M4.8 Pilot Smoke Tests ──────────────────────────────────────────────────
+
+
+def test_content_pipeline_lifecycle(client: TestClient):
+    """Verify the draft→review→approved→published lifecycle works end-to-end."""
+    tokens = create_admin_and_login(client)
+    sid, eid = (
+        __import__("tests.test_exam_engine", fromlist=["_make_taxonomy"])
+        ._make_taxonomy(client, tokens)
+    )
+
+    # Create a draft question
+    resp = client.post(
+        "/api/v1/admin/questions",
+        json={
+            "subject_id": sid, "exam_type_id": eid, "year_level": 5,
+            "difficulty": "medium", "question_type": "mcq",
+            "source_type": "ai", "content_ownership": "original",
+            "stem": "Pilot test: What is 2+2?", "correct_answer": "A",
+            "full_explanation": "2+2=4", "marks": 1,
+            "options_json": [
+                {"label": "A", "text": "4", "is_correct": True, "explanation": ""},
+                {"label": "B", "text": "3", "is_correct": False, "explanation": ""},
+            ],
+        },
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 201
+    q_id = resp.json()["id"]
+
+    # draft → review
+    resp = client.post(
+        f"/api/v1/admin/content/questions/{q_id}/submit-review",
+        json={"quality_score": 4},
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "review"
+
+    # review → approve
+    resp = client.post(
+        f"/api/v1/admin/content/questions/{q_id}/approve",
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"
+
+    # approve → publish
+    resp = client.post(
+        f"/api/v1/admin/content/questions/{q_id}/publish",
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "published"
+
+
+def test_bulk_question_creation_and_publication(client: TestClient):
+    """Verify multiple questions can be created and published."""
+    tokens = create_admin_and_login(client)
+    sid, eid = (
+        __import__("tests.test_exam_engine", fromlist=["_make_taxonomy"])
+        ._make_taxonomy(client, tokens)
+    )
+
+    ids = []
+    for i in range(5):
+        resp = client.post(
+            "/api/v1/admin/questions",
+            json={
+                "subject_id": sid, "exam_type_id": eid, "year_level": 5,
+                "difficulty": "medium", "question_type": "mcq",
+                "source_type": "manual", "content_ownership": "original",
+                "stem": f"Bulk Q{i}: What is {i}+{i}?", "correct_answer": "A",
+                "full_explanation": f"{i}+{i}={i*2}", "marks": 1,
+                "options_json": [
+                    {"label": "A", "text": str(i*2), "is_correct": True, "explanation": ""},
+                    {"label": "B", "text": str(i), "is_correct": False, "explanation": ""},
+                ],
+            },
+            headers=auth_headers(tokens),
+        )
+        assert resp.status_code == 201, resp.text
+        ids.append(resp.json()["id"])
+
+    # Bulk approve: submit for review then approve each
+    for qid in ids:
+        client.post(
+            f"/api/v1/admin/content/questions/{qid}/submit-review",
+            json={},
+            headers=auth_headers(tokens),
+        )
+        client.post(
+            f"/api/v1/admin/content/questions/{qid}/approve",
+            headers=auth_headers(tokens),
+        )
+
+    # Bulk publish using bulk action
+    resp = client.post(
+        "/api/v1/admin/content/bulk-action",
+        json={"question_ids": ids, "action": "publish"},
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected"] == 5

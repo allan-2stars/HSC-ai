@@ -59,3 +59,16 @@ from app.models.curriculum import (  # noqa: F401
     CurriculumOutcome,
     QuestionOutcomeMapping,
 )
+from app.models.import_job import (  # noqa: F401
+    ImportJob,
+    ImportJobStatus,
+)
+from app.models.ocr_job import (  # noqa: F401
+    OCRJob,
+    OCRJobStatus,
+    OCRPageResult,
+)
+from app.models.ai_job import (  # noqa: F401
+    AIGenerationJob,
+    AIGenerationJobStatus,
+)

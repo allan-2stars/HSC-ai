@@ -4,8 +4,17 @@ import { useEffect, useState } from "react";
 import { api, type StudentSummary, type TopicPerfItem, type SkillPerfItem, type RecommendationsResponse, type StudentResponse } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import Link from "next/link";
+import RoleGuard from "@/components/RoleGuard";
 
-export default function ParentDashboard() {
+export default function ParentDashboardPage() {
+  return (
+    <RoleGuard roles={["parent"]}>
+      <ParentDashboard />
+    </RoleGuard>
+  );
+}
+
+function ParentDashboard() {
   return (
     <div className="max-w-2xl mx-auto p-8">
       <h1 className="text-2xl font-bold text-text-primary mb-6">Parent Dashboard</h1>

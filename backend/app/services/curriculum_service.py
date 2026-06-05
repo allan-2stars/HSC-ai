@@ -248,6 +248,10 @@ async def get_framework_coverage(
     total = len(outcomes)
     coverage_pct = round((covered_count / total) * 100, 1) if total > 0 else 0.0
 
+    red_count = sum(1 for o in outcome_items if o["coverage_status"] == "red")
+    amber_count = sum(1 for o in outcome_items if o["coverage_status"] == "amber")
+    green_count = sum(1 for o in outcome_items if o["coverage_status"] == "green")
+
     return {
         "framework_id": framework_id,
         "framework_name": framework.name,
@@ -255,6 +259,9 @@ async def get_framework_coverage(
         "mapped_outcomes": mapped_count,
         "covered_outcomes": covered_count,
         "coverage_percentage": coverage_pct,
+        "red_count": red_count,
+        "amber_count": amber_count,
+        "green_count": green_count,
         "outcomes": outcome_items,
     }
 

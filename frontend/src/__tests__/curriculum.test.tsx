@@ -3,9 +3,14 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import * as auth from "@/lib/auth";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({}),
   useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "admin@test.com", role: "admin", is_active: true }, loading: false, role: "admin", refresh: vi.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 vi.mock("@/lib/api", () => ({

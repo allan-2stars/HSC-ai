@@ -2,13 +2,19 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { saveTokens } from "@/lib/auth";
+import { saveTokens, saveRole } from "@/lib/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const ROLE_HOME: Record<string, string> = {
+    parent: "/parent",
+    student: "/me",
+    admin: "/admin/curriculum",
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,7 +23,14 @@ export default function LoginPage() {
     try {
       const tokens = await api.login(email, password);
       saveTokens(tokens.access_token, tokens.refresh_token);
-      window.location.href = "/me";
+      // Fetch role, store in cookie for middleware, redirect
+      try {
+        const me = await api.me(tokens.access_token);
+        saveRole(me.role);
+        window.location.href = ROLE_HOME[me.role] ?? "/me";
+      } catch {
+        window.location.href = "/me";
+      }
     } catch (err: unknown) {
       const e = err as { detail?: string };
       setError(e.detail ?? "Login failed");

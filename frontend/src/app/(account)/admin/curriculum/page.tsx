@@ -10,12 +10,21 @@ import {
   type OutcomeCoverageItem,
 } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
+import RoleGuard from "@/components/RoleGuard";
 
 const STATUS_BG = { red: "bg-red-900/30", amber: "bg-amber-900/30", green: "bg-green-900/30" };
 const STATUS_BAR = { red: "bg-red-500", amber: "bg-amber-500", green: "bg-green-500" };
 const STATUS_TEXT = { red: "text-red-400", amber: "text-amber-400", green: "text-green-400" };
 
 export default function CurriculumDashboardPage() {
+  return (
+    <RoleGuard roles={["admin"]}>
+      <CurriculumDashboard />
+    </RoleGuard>
+  );
+}
+
+function CurriculumDashboard() {
   const [dash, setDash] = useState<CurriculumDashboard | null>(null);
   const [selectedFw, setSelectedFw] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<CoverageReport | null>(null);
@@ -30,7 +39,7 @@ export default function CurriculumDashboardPage() {
       .then(setDash)
       .catch((e) => {
         if (e.status === 401) { clearTokens(); window.location.href = "/login"; }
-        if (e.status === 403) setError("Admin access required.");
+        if (e.status === 403) setError("Unable to load curriculum data.");
         else setError(e.detail ?? "Failed to load dashboard");
       })
       .finally(() => setLoading(false));

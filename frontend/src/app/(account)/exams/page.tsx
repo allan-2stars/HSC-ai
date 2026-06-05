@@ -4,8 +4,17 @@ import { useEffect, useState } from "react";
 import { api, type ExamAvailable } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import Link from "next/link";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function ExamsPage() {
+  return (
+    <RoleGuard roles={["student"]}>
+      <Exams />
+    </RoleGuard>
+  );
+}
+
+function Exams() {
   const [exams, setExams] = useState<ExamAvailable[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

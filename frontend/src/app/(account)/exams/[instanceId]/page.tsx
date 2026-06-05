@@ -6,8 +6,17 @@ import { api, type AttemptStartResponse } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import ExamTimer from "@/components/ExamTimer";
 import MCQOption from "@/components/MCQOption";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function ExamAttemptPage() {
+  return (
+    <RoleGuard roles={["student"]}>
+      <ExamAttempt />
+    </RoleGuard>
+  );
+}
+
+function ExamAttempt() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();

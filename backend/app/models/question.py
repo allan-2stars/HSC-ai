@@ -44,6 +44,7 @@ class SourceType(str, enum.Enum):
     manual = "manual"
     ocr = "ocr"
     ai = "ai"
+    imported = "imported"
 
 
 class ContentOwnershipType(str, enum.Enum):
@@ -117,6 +118,14 @@ class Question(Base, TimestampMixin):
         SAEnum(ContentOwnershipType, name="content_ownership_type"), nullable=False
     )
     copyright_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Quality review fields
+    quality_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("admin_profiles.id"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # use_alter=True defers this FK until after question_versions table is created.
     current_version_id: Mapped[str | None] = mapped_column(
         String(36),

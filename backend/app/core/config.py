@@ -49,5 +49,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ── AI Providers ─────────────────────────────────────────────────────
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    DEEPSEEK_API_KEY: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
 
 settings = Settings()

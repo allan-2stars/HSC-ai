@@ -39,6 +39,8 @@ class QuestionResponse(BaseModel):
     source_type: SourceType
     content_ownership: ContentOwnershipType
     copyright_note: str | None
+    quality_score: int | None = None
+    review_notes: str | None = None
     current_version: QuestionVersionResponse | None
     created_at: datetime
     updated_at: datetime
@@ -147,3 +149,30 @@ class PoolResponse(BaseModel):
 
 class PoolMemberAddRequest(BaseModel):
     question_id: str
+
+
+# ── Review workflow ──────────────────────────────────────────────────────────
+
+class SubmitReviewRequest(BaseModel):
+    quality_score: int | None = None
+    review_notes: str | None = None
+
+    @field_validator("quality_score")
+    @classmethod
+    def valid_score(cls, v: int | None) -> int | None:
+        if v is not None and v not in range(1, 6):
+            raise ValueError("quality_score must be 1-5")
+        return v
+
+
+class BulkActionRequest(BaseModel):
+    question_ids: list[str]
+    action: str  # "approve" | "publish" | "archive"
+
+
+class ContentStatsResponse(BaseModel):
+    total: int
+    by_status: dict
+    by_source: dict
+    published_this_week: int
+    published_this_month: int

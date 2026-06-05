@@ -24,9 +24,14 @@ vi.mock("@/lib/auth", () => ({
   isAuthenticated: vi.fn(() => true),
 }));
 
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "s@test.com", role: "student", is_active: true }, loading: false, role: "student", refresh: vi.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ instanceId: "inst-1", attemptId: "attempt-1" }),
   useSearchParams: () => new URLSearchParams(),
 }));

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type AssignmentItem, type StudentResponse } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
+import RoleGuard from "@/components/RoleGuard";
 
 const STATUS_COLORS: Record<string, string> = {
   assigned: "text-blue-400",
@@ -14,6 +15,14 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ParentAssignmentsPage() {
+  return (
+    <RoleGuard roles={["parent"]}>
+      <ParentAssignments />
+    </RoleGuard>
+  );
+}
+
+function ParentAssignments() {
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [students, setStudents] = useState<StudentResponse[]>([]);
   const [loading, setLoading] = useState(true);

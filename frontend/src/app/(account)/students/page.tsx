@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import { api, type StudentResponse } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function StudentsPage() {
+  return (
+    <RoleGuard roles={["parent"]}>
+      <Students />
+    </RoleGuard>
+  );
+}
+
+function Students() {
   const [students, setStudents] = useState<StudentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");

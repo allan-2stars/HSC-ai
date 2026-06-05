@@ -54,6 +54,7 @@ from app.services.audit_service import log_action
 # ── Seed accounts ────────────────────────────────────────────────────────────
 
 SEED_ADMIN = {"email": "admin@hsc.local", "password": "admin123", "name": "Seed Admin"}
+SEED_ADMIN_2 = {"email": "ai.signpega@gmail.com", "password": "Admin123!", "name": "AI Signpega Admin"}
 SEED_PARENT = {"email": "parent@hsc.local", "password": "parent123", "name": "Seed Parent"}
 SEED_STUDENT = {"display_name": "Seed Student", "year_level": 5, "initial_password": "student123"}
 
@@ -460,10 +461,10 @@ async def _ensure_exam(
         await db.flush()
 
     # Freeze questions into instance
-    existing_frozen = await db.execute(
+    existing_frozen_qs = await db.execute(
         select(ExamInstanceQuestion).where(ExamInstanceQuestion.exam_instance_id == instance.id)
     )
-    if not existing_frozen.scalar_one_or_none():
+    if not existing_frozen_qs.first():
         section_questions = (await db.execute(
             select(ExamSectionQuestion)
             .where(ExamSectionQuestion.exam_section_id == section.id)
@@ -530,7 +531,10 @@ async def seed_all(db: AsyncSession) -> dict:
 
     # 2. Users
     admin = await _ensure_user(SEED_ADMIN["email"], SEED_ADMIN["password"], UserRole.admin, SEED_ADMIN["name"], db)
-    _add(admin.email == SEED_ADMIN["email"], "admin_user")
+    _add(True, "admin_user")
+
+    admin2 = await _ensure_user(SEED_ADMIN_2["email"], SEED_ADMIN_2["password"], UserRole.admin, SEED_ADMIN_2["name"], db)
+    _add(admin2.email == SEED_ADMIN_2["email"], "admin_user_2")
 
     parent = await _ensure_user(SEED_PARENT["email"], SEED_PARENT["password"], UserRole.parent, SEED_PARENT["name"], db)
     _add(parent.email == SEED_PARENT["email"], "parent_user")
@@ -572,6 +576,7 @@ async def seed_all(db: AsyncSession) -> dict:
 
     summary["accounts"] = {
         "admin": SEED_ADMIN,
+        "admin_2": SEED_ADMIN_2,
         "parent": SEED_PARENT,
         "student": {
             "login_email": "seed01@students.hscai.internal",

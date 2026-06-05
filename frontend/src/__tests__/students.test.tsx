@@ -15,6 +15,15 @@ vi.mock("@/lib/auth", () => ({
   getAccessToken: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "p@test.com", role: "parent", is_active: true }, loading: false, role: "parent", refresh: vi.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 describe("StudentsPage", () => {
   beforeEach(() => {
     vi.mocked(getAccessToken).mockReturnValue("mock-token");

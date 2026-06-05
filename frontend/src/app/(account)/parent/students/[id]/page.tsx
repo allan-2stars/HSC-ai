@@ -6,8 +6,17 @@ import Link from "next/link";
 import { api, type StudentSummary, type TopicPerfItem, type SkillPerfItem, type RecommendationsResponse, type StudentResponse, type TrendItem } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import TrendChart from "@/components/TrendChart";
+import RoleGuard from "@/components/RoleGuard";
 
 export default function StudentAnalyticsPage() {
+  return (
+    <RoleGuard roles={["parent"]}>
+      <StudentAnalytics />
+    </RoleGuard>
+  );
+}
+
+function StudentAnalytics() {
   const params = useParams();
   const studentId = params.id as string;
 

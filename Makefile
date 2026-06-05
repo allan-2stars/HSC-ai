@@ -23,6 +23,7 @@ help:
 	@echo "  make seed            Seed subscription plans"
 	@echo "  make seed            Seed subscription plans
   make seed-dev        Full development seed (users, questions, exams)
+  make seed-pilot      M4.8 content seeding pilot (100 published OC Maths Qs)
   make create-test-db  Create hscai_test database"
 	@echo "  make shell-be        Open shell in backend container"
 	@echo ""
@@ -89,6 +90,9 @@ seed:
 
 seed-dev:
 	docker compose exec backend python -m app.seed
+
+seed-pilot:
+	docker compose exec backend python -m app.pilot_seed
 
 create-test-db:
 	docker compose exec postgres createdb -U hscai hscai_test 2>/dev/null || echo "Test database already exists"

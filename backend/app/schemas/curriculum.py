@@ -112,6 +112,9 @@ class CoverageReportResponse(BaseModel):
     mapped_outcomes: int
     covered_outcomes: int
     coverage_percentage: float
+    red_count: int = 0
+    amber_count: int = 0
+    green_count: int = 0
     outcomes: list[OutcomeCoverageItem]
 
 

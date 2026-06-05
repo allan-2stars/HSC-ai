@@ -13,10 +13,19 @@ docker compose exec backend python -m app.seed
 | Role | Email | Password | Notes |
 |---|---|---|---|
 | Admin | `admin@hsc.local` | `admin123` | Full backend admin access |
+| Admin 2 | `ai.signpega@gmail.com` | `Admin123!` | Full backend admin access |
 | Parent | `parent@hsc.local` | `parent123` | Has one student linked |
 | Student | `seed01@students.hscai.internal` | `student123` | Linked to Seed Parent, Year 5 |
 
-## Test URLs
+## Role Home Pages
+
+After login, users are redirected based on role:
+
+| Role | Home Page |
+|---|---|
+| Parent | `http://localhost:3090/parent` |
+| Student | `http://localhost:3090/me` |
+| Admin | `http://localhost:3090/admin/curriculum` |
 
 | Page | URL | Auth |
 |---|---|---|

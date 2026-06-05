@@ -3,9 +3,15 @@ import { render, screen } from "@testing-library/react";
 import * as auth from "@/lib/auth";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ id: "student-1" }),
   useSearchParams: () => new URLSearchParams(),
+}));
+
+let _assignRole = "student";
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "test@test.com", role: _assignRole, is_active: true }, loading: false, role: _assignRole, refresh: vi.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -104,6 +110,7 @@ describe("StudentAssignmentsPage", () => {
 describe("ParentAssignmentsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _assignRole = "parent";
     (auth.getAccessToken as any).mockReturnValue("test-token");
   });
 
