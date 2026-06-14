@@ -573,6 +573,23 @@ export const api = {
     return res.json();
   },
 
+  // ── Quality Review ─────────────────────────────────────────────
+
+  createQualityReview: (body: { question_id: string; correctness_score?: number; outcome_alignment_score?: number; difficulty_score?: number; explanation_score?: number; overall_score?: number; notes?: string | null }, token: string) =>
+    request<any>(`/v1/admin/content/quality-review`, { method: "POST", body: JSON.stringify(body) }, token),
+
+  getQualityDashboard: (token: string) =>
+    request<any>(`/v1/admin/content/quality-dashboard`, {}, token),
+
+  getQualityByProvider: (token: string) =>
+    request<{ source: { source: string; reviewed_count: number; average_score: number }[]; providers: { provider: string; saved_count: number; rejected_count: number; rejection_rate: number; publication_rate: number }[] }>(`/v1/admin/content/quality-by-provider`, {}, token),
+
+  getQualityByOutcome: (token: string) =>
+    request<{ outcome_code: string; outcome_title: string; total_questions: number; reviewed_count: number; average_quality: number; needs_regeneration: number }[]>(`/v1/admin/content/quality-by-outcome`, {}, token),
+
+  getRegenerationCandidates: (token: string) =>
+    request<{ question_id: string; review_id: string; overall_score: number; source_type: string; question_status: string; notes: string | null }[]>(`/v1/admin/content/quality-regeneration-candidates`, {}, token),
+
   // ── AI Generation ──────────────────────────────────────────────
 
   listOutcomes: (token: string, frameworkId?: string) => {

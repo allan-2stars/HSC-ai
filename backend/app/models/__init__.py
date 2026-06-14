@@ -72,3 +72,6 @@ from app.models.ai_job import (  # noqa: F401
     AIGenerationJob,
     AIGenerationJobStatus,
 )
+from app.models.quality import (  # noqa: F401
+    QuestionQualityReview,
+)

@@ -75,6 +75,7 @@ export default function AccountPage() {
             <NavLink href="/admin/content/ocr" label="OCR Import" />
             <NavLink href="/admin/content/import" label="Bulk Import" />
             <NavLink href="/admin/content/ai-generate" label="AI Generate" />
+            <NavLink href="/admin/content/quality" label="Content Quality" />
           </NavSection>
         )}
 

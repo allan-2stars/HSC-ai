@@ -6,6 +6,7 @@ from app.api.v1.admin import content as admin_content
 from app.api.v1.admin import content_import as admin_content_import
 from app.api.v1.admin import content_ocr as admin_content_ocr
 from app.api.v1.admin import content_review as admin_content_review
+from app.api.v1.admin import quality as admin_quality
 from app.api.v1.admin import exams as admin_exams
 from app.api.v1.admin import pools as admin_pools
 from app.api.v1.admin import questions as admin_questions
@@ -19,6 +20,7 @@ router.include_router(admin_content_review.router)
 router.include_router(admin_content_ocr.router)
 router.include_router(admin_content_import.router)
 router.include_router(admin_ai_generate.router)
+router.include_router(admin_quality.router)
 router.include_router(admin_questions.router)
 router.include_router(admin_pools.router)
 router.include_router(admin_exams.router)
