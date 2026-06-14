@@ -1,14 +1,46 @@
 """Content quality review — scoring, aggregation, provider/outcome analytics."""
-from datetime import datetime, timezone
-
-from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ai_job import AIGenerationJob
 from app.models.curriculum import CurriculumOutcome, QuestionOutcomeMapping
 from app.models.quality import QuestionQualityReview
-from app.models.question import Question, QuestionStatus, SourceType
+from app.models.question import ContentOwnershipType, Question, QuestionStatus
+
+
+# Ownership types that are NEVER allowed in quality review (unsafe/copyright).
+_BLOCKED_OWNERSHIP = {
+    ContentOwnershipType.restricted_reference_only,
+}
+
+# Lifecycle statuses that are NOT allowed in quality review (not yet in or past review pipeline).
+_BLOCKED_STATUS = {
+    QuestionStatus.draft,
+    QuestionStatus.archived,
+    QuestionStatus.rejected,
+}
+
+
+async def _validate_question_reviewable(question: Question) -> None:
+    """Raise HTTPException if the question cannot be quality-reviewed.
+
+    Two independent gates:
+    1. Ownership safety — restricted content must never be reviewed.
+    2. Lifecycle status — draft (not ready), archived/rejected (dead).
+    internal_draft ownership is allowed when the question has reached review/approved/published status.
+    """
+    from fastapi import HTTPException, status
+
+    if question.content_ownership in _BLOCKED_OWNERSHIP:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Questions with content_ownership '{question.content_ownership.value}' cannot be quality-reviewed",
+        )
+    if question.status in _BLOCKED_STATUS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Questions with status '{question.status.value}' cannot be quality-reviewed",
+        )
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -25,9 +57,13 @@ async def create_quality_review(
     overall_score: int = 3,
     notes: str | None = None,
 ) -> QuestionQualityReview:
+    from fastapi import HTTPException
+
     question = await db.get(Question, question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
+
+    await _validate_question_reviewable(question)
 
     for field, name in [
         (correctness_score, "correctness_score"),
@@ -79,50 +115,66 @@ async def list_all_reviews(
 
 
 async def get_quality_dashboard(db: AsyncSession) -> dict:
-    """Aggregate quality metrics across all reviewed questions."""
-    result = await db.execute(select(QuestionQualityReview))
-    reviews = list(result.scalars().all())
+    """Aggregate quality metrics using SQL — no unbounded table scan."""
+    result = await db.execute(
+        select(
+            func.count(QuestionQualityReview.id).label("total_reviews"),
+            func.count(distinct(QuestionQualityReview.question_id)).label("unique_questions"),
+            func.avg(QuestionQualityReview.correctness_score).label("avg_correctness"),
+            func.avg(QuestionQualityReview.outcome_alignment_score).label("avg_outcome_alignment"),
+            func.avg(QuestionQualityReview.difficulty_score).label("avg_difficulty"),
+            func.avg(QuestionQualityReview.explanation_score).label("avg_explanation"),
+            func.avg(QuestionQualityReview.overall_score).label("avg_overall"),
+            func.count(distinct(QuestionQualityReview.question_id)).filter(
+                QuestionQualityReview.overall_score < 3
+            ).label("needs_revision_distinct"),
+        )
+    )
+    row = result.one()
+    total = row.total_reviews
 
-    if not reviews:
-        return _empty_dashboard()
+    if total == 0:
+        return {
+            "total_reviews": 0,
+            "unique_questions_reviewed": 0,
+            "average_scores": {"correctness": 0, "outcome_alignment": 0, "difficulty": 0, "explanation": 0, "overall": 0},
+            "needs_revision_count": 0,
+            "reviews": [],
+        }
 
-    total = len(reviews)
     avg = {
-        "correctness": round(sum(r.correctness_score for r in reviews) / total, 1),
-        "outcome_alignment": round(sum(r.outcome_alignment_score for r in reviews) / total, 1),
-        "difficulty": round(sum(r.difficulty_score for r in reviews) / total, 1),
-        "explanation": round(sum(r.explanation_score for r in reviews) / total, 1),
-        "overall": round(sum(r.overall_score for r in reviews) / total, 1),
+        "correctness": float(round(row.avg_correctness, 1)) if row.avg_correctness else 0,
+        "outcome_alignment": float(round(row.avg_outcome_alignment, 1)) if row.avg_outcome_alignment else 0,
+        "difficulty": float(round(row.avg_difficulty, 1)) if row.avg_difficulty else 0,
+        "explanation": float(round(row.avg_explanation, 1)) if row.avg_explanation else 0,
+        "overall": float(round(row.avg_overall, 1)) if row.avg_overall else 0,
     }
 
-    unique_questions = len({r.question_id for r in reviews})
-    needs_revision = sum(1 for r in reviews if r.overall_score < 3)
+    # Fetch the most recent 50 reviews deterministically
+    recent_result = await db.execute(
+        select(QuestionQualityReview)
+        .order_by(QuestionQualityReview.created_at.desc())
+        .limit(50)
+    )
+    recent_reviews = list(recent_result.scalars().all())
 
     return {
         "total_reviews": total,
-        "unique_questions_reviewed": unique_questions,
+        "unique_questions_reviewed": row.unique_questions,
         "average_scores": avg,
-        "needs_revision_count": needs_revision,
-        "reviews": _to_list(reviews[:50]),
-    }
-
-
-def _empty_dashboard():
-    return {
-        "total_reviews": 0,
-        "unique_questions_reviewed": 0,
-        "average_scores": {"correctness": 0, "outcome_alignment": 0, "difficulty": 0, "explanation": 0, "overall": 0},
-        "needs_revision_count": 0,
-        "reviews": [],
+        "needs_revision_count": row.needs_revision_distinct,
+        "reviews": _to_list(recent_reviews),
     }
 
 
 # ── Provider Comparison ──────────────────────────────────────────────────────
 
 
-async def get_quality_by_provider(db: AsyncSession) -> list[dict]:
-    """Compare quality scores by content source_type and AI provider."""
-    # Get all reviews with question source_type
+async def get_quality_by_provider(db: AsyncSession) -> dict:
+    """Compare quality scores by content source_type and AI provider.
+
+    Returns a dict with 'source' and 'providers' keys (named, not positional).
+    """
     result = await db.execute(
         select(
             QuestionQualityReview.overall_score,
@@ -178,60 +230,57 @@ async def get_quality_by_provider(db: AsyncSession) -> list[dict]:
             "publication_rate": pub_rate,
         })
 
-    return [{"source": source_results}, {"providers": provider_results}]
+    return {"source": source_results, "providers": provider_results}
 
 
 # ── Outcome Analytics ────────────────────────────────────────────────────────
 
 
 async def get_quality_by_outcome(db: AsyncSession) -> list[dict]:
-    """Quality scores aggregated by curriculum outcome."""
+    """Quality scores aggregated by curriculum outcome — single grouped query."""
     result = await db.execute(
         select(
             CurriculumOutcome.code,
             CurriculumOutcome.title,
-            QuestionQualityReview.overall_score,
+            func.count(QuestionQualityReview.id).label("reviewed_count"),
+            func.avg(QuestionQualityReview.overall_score).label("avg_quality"),
+            func.count(QuestionQualityReview.id).filter(
+                QuestionQualityReview.overall_score < 3
+            ).label("needs_regen"),
         )
-        .select_from(QuestionQualityReview)
-        .join(Question, Question.id == QuestionQualityReview.question_id)
-        .join(QuestionOutcomeMapping, QuestionOutcomeMapping.question_id == Question.id)
-        .join(CurriculumOutcome, CurriculumOutcome.id == QuestionOutcomeMapping.outcome_id)
+        .select_from(CurriculumOutcome)
+        .join(QuestionOutcomeMapping, QuestionOutcomeMapping.outcome_id == CurriculumOutcome.id)
+        .join(Question, Question.id == QuestionOutcomeMapping.question_id)
+        .outerjoin(QuestionQualityReview, QuestionQualityReview.question_id == Question.id)
+        .group_by(CurriculumOutcome.code, CurriculumOutcome.title)
+        .order_by(func.avg(QuestionQualityReview.overall_score).asc().nulls_last())
     )
     rows = result.fetchall()
 
-    by_outcome: dict[str, dict] = {}
-    for code, title, score in rows:
-        if code not in by_outcome:
-            by_outcome[code] = {"title": title, "scores": [], "total": 0}
-        by_outcome[code]["scores"].append(score)
-        by_outcome[code]["total"] += score
-
     results = []
-    for code, data in sorted(by_outcome.items()):
-        n = len(data["scores"])
-        avg = round(data["total"] / n, 1) if n > 0 else 0
-        needs_regen = sum(1 for s in data["scores"] if s < 3)
-
-        # Also count published questions for this outcome
+    for code, title, reviewed_count, avg_quality, needs_regen in rows:
+        # Count published questions for this outcome
         count_result = await db.execute(
             select(func.count(Question.id))
             .select_from(CurriculumOutcome)
             .join(QuestionOutcomeMapping, QuestionOutcomeMapping.outcome_id == CurriculumOutcome.id)
             .join(Question, Question.id == QuestionOutcomeMapping.question_id)
-            .where(CurriculumOutcome.code == code, Question.status == QuestionStatus.published)
+            .where(
+                CurriculumOutcome.code == code,
+                Question.status == QuestionStatus.published,
+            )
         )
         published = count_result.scalar() or 0
 
         results.append({
             "outcome_code": code,
-            "outcome_title": data["title"],
+            "outcome_title": title,
             "total_questions": published,
-            "reviewed_count": n,
-            "average_quality": avg,
+            "reviewed_count": reviewed_count,
+            "average_quality": float(round(avg_quality, 1)) if avg_quality else 0,
             "needs_regeneration": needs_regen,
         })
 
-    results.sort(key=lambda r: r["average_quality"])
     return results
 
 
@@ -244,7 +293,7 @@ async def get_regeneration_candidates(db: AsyncSession, limit: int = 50) -> list
         select(QuestionQualityReview, Question.source_type, Question.status)
         .join(Question, Question.id == QuestionQualityReview.question_id)
         .where(QuestionQualityReview.overall_score < 3)
-        .order_by(QuestionQualityReview.overall_score)
+        .order_by(QuestionQualityReview.overall_score, QuestionQualityReview.created_at.desc())
         .limit(limit)
     )
     rows = result.fetchall()

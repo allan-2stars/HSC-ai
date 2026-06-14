@@ -96,11 +96,8 @@ async def quality_by_provider(
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    # Returns structure: {"source": [...], "providers": [...]}
     data = await quality_service.get_quality_by_provider(db)
-    source_list = data[0]["source"] if data else []
-    provider_list = data[1]["providers"] if len(data) > 1 else []
-    return {"source": source_list, "providers": provider_list}
+    return data
 
 
 # ── Outcome Quality ──────────────────────────────────────────────────────────
