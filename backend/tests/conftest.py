@@ -19,6 +19,8 @@ from urllib.parse import urlparse, urlunparse
 # even though .env contains the Docker-internal values.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://hscai:change_me_in_production@localhost:5435/hscai")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
+os.environ.setdefault("MINIO_ENDPOINT", "localhost:9190")
+os.environ["DEBUG"] = "true"  # skip startup diagnostics during tests
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,6 +43,11 @@ _db_module.engine = create_async_engine(
     echo=False,
     poolclass=_NullPool,
 )
+# Rebuild SessionLocal so health endpoints (which use SessionLocal directly)
+# connect to the test database, not the Docker-internal address.
+from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker as _async_sessionmaker
+_db_module.SessionLocal = _async_sessionmaker(_db_module.engine, class_=_AsyncSession, expire_on_commit=False)
 
 # Read TEST_DATABASE_URL from environment; default to Docker-internal address.
 # Inside Docker, .env provides: postgresql+asyncpg://...@postgres:5432/hscai_test

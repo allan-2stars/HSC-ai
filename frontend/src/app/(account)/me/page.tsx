@@ -70,6 +70,7 @@ export default function AccountPage() {
 
         {user.role === "admin" && (
           <NavSection title="Administration">
+            <NavLink href="/admin/system" label="System Dashboard" />
             <NavLink href="/admin/curriculum" label="Curriculum Dashboard" />
             <NavLink href="/admin/content/review" label="Content Review" />
             <NavLink href="/admin/content/ocr" label="OCR Import" />

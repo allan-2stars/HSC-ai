@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+
+logger = logging.getLogger("hsc-ai.system")
 
 app = FastAPI(
     title="HSC AI Platform",
@@ -19,6 +23,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    if settings.DEBUG:
+        return  # Skip startup diagnostics in dev/test — the dev server manages its own state
+
+    from app.core.database import SessionLocal
+    from app.services.system_service import run_startup_diagnostics
+
+    try:
+        async with SessionLocal() as db:
+            await run_startup_diagnostics(db)
+    except SystemExit:
+        raise
+    except Exception:
+        logger.exception("Startup diagnostics failed — continuing")
+
+
 
 from app.api.v1.router import router as v1_router  # noqa: E402
 
@@ -59,3 +82,13 @@ async def health_check() -> dict:
         "database": db_status,
         "redis": redis_status,
     }
+
+
+@app.get("/api/health/detailed", tags=["health"])
+async def health_detailed() -> dict:
+    """Public operational health — no user data, no row counts, no job details."""
+    from app.core.database import SessionLocal
+    from app.services.system_service import build_health_data
+
+    async with SessionLocal() as db:
+        return await build_health_data(db)

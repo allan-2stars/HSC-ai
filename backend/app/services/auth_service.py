@@ -66,6 +66,7 @@ async def authenticate_user(email: str, password: str, db: AsyncSession) -> User
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
+    user.last_login_at = datetime.now(timezone.utc)
     return user
 
 

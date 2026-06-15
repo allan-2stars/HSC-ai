@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # ── AI Providers ─────────────────────────────────────────────────────
+    # ── Operations ─────────────────────────────────────────────────────
+    STUCK_JOB_THRESHOLD_MINUTES: int = 30  # processing jobs older than this are "stuck"
+    ORPHAN_JOB_THRESHOLD_HOURS: int = 24  # pending jobs older than this are "orphaned"
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""

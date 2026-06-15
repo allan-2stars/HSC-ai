@@ -637,4 +637,64 @@ export const api = {
     if (!res.ok) throw { status: res.status, detail: "Download failed" };
     return res.blob();
   },
+
+  // ── System Dashboard ──────────────────────────────────────────
+
+  getSystemDashboard: (token: string) =>
+    request<SystemDashboard>(`/v1/admin/system`, {}, token),
+};
+
+export interface SystemDashboard {
+  database_status: string;
+  redis_status: string;
+  storage_status: string;
+  migration_version: string;
+  uptime_seconds: number;
+  memory_usage_mb: number;
+  total_users: number;
+  active_users_24h: number;
+  active_parents_24h: number;
+  active_students_24h: number;
+  active_admins_24h: number;
+  total_questions: number;
+  published_questions: number;
+  total_exams: number;
+  total_assignments: number;
+  jobs: {
+    ocr_jobs: JobCounts;
+    ai_jobs: JobCounts;
+    import_jobs: JobCounts;
+  };
+  failed_jobs: FailedJob[];
+  stuck_jobs: StuckJob[];
+  table_counts: Record<string, number>;
+}
+
+export interface JobCounts {
+  total: number;
+  active: number;
+  completed: number;
+  failed: number;
+}
+
+export interface FailedJob {
+  type: string;
+  id: string;
+  status: string;
+  error: string | null;
+  created_at: string;
+  filename?: string;
+  provider?: string;
+}
+
+export interface StuckJob {
+  type: string;
+  id: string;
+  status: string;
+  duration_minutes: number;
+  started_at?: string;
+  created_at?: string;
+  filename?: string;
+  provider?: string;
+}
 };
