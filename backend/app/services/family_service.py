@@ -23,6 +23,16 @@ async def get_parent_profile(user_id: str, db: AsyncSession) -> ParentProfile:
     return profile
 
 
+async def get_student_profile(user_id: str, db: AsyncSession) -> StudentProfile:
+    result = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == user_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student profile not found")
+    return profile
+
+
 async def get_student_count(parent_id: str, db: AsyncSession) -> int:
     result = await db.execute(
         select(func.count())

@@ -64,6 +64,7 @@ export default function AccountPage() {
               <NavLink href="/parent" label="View Dashboard" />
               <NavLink href="/parent/progress" label="Student Progress" />
               <NavLink href="/parent/assignments" label="Manage Assignments" />
+              <NavLink href="/parent/writing" label="Student Writing" />
             </NavSection>
           </>
         )}
@@ -77,6 +78,7 @@ export default function AccountPage() {
             <NavLink href="/admin/content/import" label="Bulk Import" />
             <NavLink href="/admin/content/ai-generate" label="AI Generate" />
             <NavLink href="/admin/content/quality" label="Content Quality" />
+            <NavLink href="/admin/writing" label="Writing Tasks" />
           </NavSection>
         )}
 
@@ -85,6 +87,7 @@ export default function AccountPage() {
             <NavSection title="Exams">
               <NavLink href="/exams" label="Available Exams" />
               <NavLink href="/me/assignments" label="My Assignments" />
+              <NavLink href="/me/writing" label="Writing Tasks" />
             </NavSection>
             <NavSection title="Progress">
               <NavLink href="/me/progress" label="My Progress" />

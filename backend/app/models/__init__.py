@@ -75,3 +75,9 @@ from app.models.ai_job import (  # noqa: F401
 from app.models.quality import (  # noqa: F401
     QuestionQualityReview,
 )
+from app.models.writing import (  # noqa: F401
+    WritingSubmission,
+    WritingSubmissionStatus,
+    WritingTask,
+    WritingTaskStatus,
+)

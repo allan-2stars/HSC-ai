@@ -642,6 +642,53 @@ export const api = {
 
   getSystemDashboard: (token: string) =>
     request<SystemDashboard>(`/v1/admin/system`, {}, token),
+
+  // ── Writing Mode ─────────────────────────────────────────────
+
+  // Student
+  listWritingTasks: (token: string) =>
+    request<WritingTaskItem[]>(`/v1/writing/tasks`, {}, token),
+
+  startWriting: (taskId: string, token: string) =>
+    request<WritingSubmissionResponse>(`/v1/writing/tasks/${taskId}/start`, { method: "POST" }, token),
+
+  saveWriting: (submissionId: string, content: string, wordCount: number, token: string) =>
+    request<WritingSubmissionResponse>(`/v1/writing/submissions/${submissionId}/save`, {
+      method: "PATCH",
+      body: JSON.stringify({ content, word_count: wordCount }),
+    }, token),
+
+  submitWriting: (submissionId: string, token: string) =>
+    request<WritingSubmissionResponse>(`/v1/writing/submissions/${submissionId}/submit`, { method: "POST" }, token),
+
+  getWritingSubmission: (submissionId: string, token: string) =>
+    request<WritingSubmissionResponse>(`/v1/writing/submissions/${submissionId}`, {}, token),
+
+  listMyWritingSubmissions: (token: string) =>
+    request<WritingSubmissionListItem[]>(`/v1/writing/submissions`, {}, token),
+
+  // Parent
+  listStudentWriting: (studentId: string, token: string) =>
+    request<WritingSubmissionListItem[]>(`/v1/parents/students/${studentId}/writing`, {}, token),
+
+  // Admin
+  createWritingTask: (body: WritingTaskCreateBody, token: string) =>
+    request<WritingTaskResponse>(`/v1/admin/writing/tasks`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  listAdminWritingTasks: (token: string, status?: string) =>
+    request<WritingTaskResponse[]>(`/v1/admin/writing/tasks${status ? `?status=${status}` : ""}`, {}, token),
+
+  publishWritingTask: (taskId: string, token: string) =>
+    request<WritingTaskResponse>(`/v1/admin/writing/tasks/${taskId}/publish`, { method: "PATCH" }, token),
+
+  archiveWritingTask: (taskId: string, token: string) =>
+    request<WritingTaskResponse>(`/v1/admin/writing/tasks/${taskId}/archive`, { method: "PATCH" }, token),
+
+  listAllWritingSubmissions: (token: string, taskId?: string) =>
+    request<WritingSubmissionListItem[]>(`/v1/admin/writing/submissions${taskId ? `?task_id=${taskId}` : ""}`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -697,4 +744,69 @@ export interface StuckJob {
   filename?: string;
   provider?: string;
 }
-};
+
+// ── Writing Mode ───────────────────────────────────────────────
+
+export interface WritingTaskItem {
+  id: string;
+  title: string;
+  prompt: string;
+  instructions: string | null;
+  word_limit: number | null;
+  recommended_time_minutes: number | null;
+  subject_id: string;
+  exam_type_id: string;
+  status: string;
+  created_at: string | null;
+  submission: { id: string; status: string; word_count: number; started_at: string | null; submitted_at: string | null } | null;
+}
+
+export interface WritingTaskResponse {
+  id: string;
+  title: string;
+  prompt: string;
+  instructions: string | null;
+  word_limit: number | null;
+  recommended_time_minutes: number | null;
+  subject_id: string;
+  exam_type_id: string;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface WritingTaskCreateBody {
+  title: string;
+  prompt: string;
+  instructions?: string | null;
+  word_limit?: number | null;
+  recommended_time_minutes?: number | null;
+  subject_id: string;
+  exam_type_id: string;
+}
+
+export interface WritingSubmissionResponse {
+  id: string;
+  writing_task_id: string;
+  student_id: string;
+  content: string;
+  word_count: number;
+  status: string;
+  started_at: string | null;
+  submitted_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface WritingSubmissionListItem {
+  id: string;
+  writing_task_id: string;
+  task_title: string;
+  student_id: string;
+  student_name?: string | null;
+  word_count: number;
+  status: string;
+  started_at: string | null;
+  submitted_at: string | null;
+  content?: string;
+}

@@ -1,0 +1,100 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.deps import get_current_student
+from app.models.user import User
+from app.schemas.writing_schema import (
+    WritingSubmissionResponse,
+    WritingSubmissionSave,
+)
+from app.services import writing_service
+from app.services.family_service import get_student_profile
+
+router = APIRouter(prefix="/writing", tags=["writing"])
+
+
+# ── Available Tasks ───────────────────────────────────────────────────────
+
+
+@router.get("/tasks")
+async def list_available_tasks(
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_service.list_student_available_tasks(profile.id, db)
+
+
+# ── Submissions ───────────────────────────────────────────────────────────
+
+
+@router.post("/tasks/{task_id}/start")
+async def start_writing(
+    task_id: str,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    sub = await writing_service.get_or_create_submission(task_id, profile.id, db)
+    return _sub_to_response(sub)
+
+
+@router.patch("/submissions/{submission_id}/save")
+async def save_writing(
+    submission_id: str,
+    body: WritingSubmissionSave,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    sub = await writing_service.save_submission(
+        submission_id, profile.id, body.content, body.word_count, db
+    )
+    return _sub_to_response(sub)
+
+
+@router.post("/submissions/{submission_id}/submit")
+async def submit_writing(
+    submission_id: str,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    sub = await writing_service.submit_submission(submission_id, profile.id, db)
+    return _sub_to_response(sub)
+
+
+@router.get("/submissions/{submission_id}")
+async def get_submission(
+    submission_id: str,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    sub = await writing_service.get_student_submission(submission_id, profile.id, db)
+    return _sub_to_response(sub)
+
+
+@router.get("/submissions")
+async def list_my_submissions(
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_service.list_student_submissions(profile.id, db)
+
+
+def _sub_to_response(sub) -> dict:
+    return {
+        "id": sub.id,
+        "writing_task_id": sub.writing_task_id,
+        "student_id": sub.student_id,
+        "content": sub.content,
+        "word_count": sub.word_count,
+        "status": sub.status.value,
+        "started_at": sub.started_at.isoformat() if sub.started_at else None,
+        "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
+        "created_at": sub.created_at.isoformat() if sub.created_at else None,
+        "updated_at": sub.updated_at.isoformat() if sub.updated_at else None,
+    }

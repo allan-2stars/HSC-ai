@@ -10,7 +10,7 @@ from app.schemas.user import (
     StudentResponse,
     StudentUpdateRequest,
 )
-from app.services import family_service
+from app.services import family_service, writing_service
 
 router = APIRouter(tags=["parents"])
 
@@ -98,4 +98,18 @@ async def delete_student(
         parent_id=parent_profile.id,
         db=db,
         actor_user_id=parent.id,
+    )
+
+
+@router.get("/parents/students/{student_id}/writing")
+async def list_student_writing(
+    student_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    student_ids = [s.id for s in students]
+    return await writing_service.get_student_submissions_for_parent(
+        student_id, student_ids, db
     )
