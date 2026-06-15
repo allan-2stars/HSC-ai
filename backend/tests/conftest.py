@@ -12,6 +12,7 @@ Strategy:
 import asyncio
 import os
 from collections.abc import Generator
+from uuid import uuid4
 from urllib.parse import urlparse, urlunparse
 
 # Override Docker-internal URLs with host-side addresses before any app imports.
@@ -146,10 +147,17 @@ def auth_headers(tokens: dict) -> dict:
 
 def create_admin_and_login(
     client: TestClient,
-    email: str = "admin@test.com",
+    email: str | None = None,
     password: str = "AdminPass123",
 ) -> dict:
-    """Create an admin user directly in the test DB, then login to get tokens."""
+    """Create an admin user directly in the test DB, then login to get tokens.
+
+    Generates a unique email by default to prevent collisions when called
+    multiple times within a test session.
+    """
+    if email is None:
+        email = f"admin_{uuid4().hex[:8]}@test.com"
+
     async def _seed():
         async with _SessionFactory() as session:
             from app.core.security import hash_password
@@ -177,9 +185,16 @@ def create_student_and_login(
     display_name: str = "Test Student",
     year_level: int = 5,
 ) -> dict:
-    """Create a parent (if needed), create a student, and login as the student."""
+    """Create a parent (if needed), create a student, and login as the student.
+
+    Generates a unique parent email when creating a parent automatically to
+    prevent collisions across tests.
+    """
     if parent_tokens is None:
-        parent_tokens = register_parent(client)
+        parent_tokens = register_parent(
+            client,
+            email=f"parent_{uuid4().hex[:8]}@test.com",
+        )
 
     resp = client.post(
         "/api/v1/parents/students",

@@ -62,6 +62,7 @@ async def check_redis() -> str:
 
 async def check_storage() -> str:
     try:
+        import asyncio
         from minio import Minio  # noqa: F811
 
         client = Minio(
@@ -70,7 +71,7 @@ async def check_storage() -> str:
             secret_key=settings.MINIO_SECRET_KEY,
             secure=settings.MINIO_SECURE,
         )
-        client.list_buckets()
+        await asyncio.to_thread(client.list_buckets)
         return "ok"
     except Exception as e:
         logger.error("Storage health check failed: %s", e)
@@ -282,6 +283,48 @@ async def get_failed_jobs(db: AsyncSession) -> list[dict]:
     return sorted(jobs, key=lambda j: str(j["created_at"]), reverse=True)
 
 
+async def get_orphaned_jobs(db: AsyncSession) -> list[dict]:
+    """Pending jobs never started within ORPHAN_JOB_THRESHOLD_HOURS — worker likely crashed."""
+    from datetime import datetime, timedelta, timezone
+
+    threshold = datetime.now(tz=timezone.utc) - timedelta(hours=settings.ORPHAN_JOB_THRESHOLD_HOURS)
+    orphaned = []
+
+    ocr_result = await db.execute(
+        select(OCRJob)
+        .where(OCRJob.status == OCRJobStatus.pending, OCRJob.created_at < threshold)
+        .order_by(OCRJob.created_at)
+        .limit(50)
+    )
+    for j in ocr_result.scalars().all():
+        orphaned.append({
+            "type": "ocr",
+            "id": j.id,
+            "filename": j.filename,
+            "status": "orphaned",
+            "created_at": j.created_at,
+            "hours_pending": round((datetime.now(tz=timezone.utc) - j.created_at).total_seconds() / 3600, 1),
+        })
+
+    import_result = await db.execute(
+        select(ImportJob)
+        .where(ImportJob.status == ImportJobStatus.pending, ImportJob.created_at < threshold)
+        .order_by(ImportJob.created_at)
+        .limit(50)
+    )
+    for j in import_result.scalars().all():
+        orphaned.append({
+            "type": "import",
+            "id": j.id,
+            "filename": j.filename,
+            "status": "orphaned",
+            "created_at": j.created_at,
+            "hours_pending": round((datetime.now(tz=timezone.utc) - j.created_at).total_seconds() / 3600, 1),
+        })
+
+    return sorted(orphaned, key=lambda j: j.get("hours_pending", 0), reverse=True)
+
+
 async def get_stuck_jobs(db: AsyncSession) -> list[dict]:
     from datetime import datetime, timedelta, timezone
 
@@ -400,6 +443,7 @@ async def get_admin_system_dashboard(db: AsyncSession) -> dict:
     jobs = await get_job_summary(db)
     failed = await get_failed_jobs(db)
     stuck = await get_stuck_jobs(db)
+    orphaned = await get_orphaned_jobs(db)
     table_counts = await get_table_counts(db)
 
     return {
@@ -410,6 +454,7 @@ async def get_admin_system_dashboard(db: AsyncSession) -> dict:
         "jobs": jobs,
         "failed_jobs": failed,
         "stuck_jobs": stuck,
+        "orphaned_jobs": orphaned,
         "table_counts": table_counts,
     }
 

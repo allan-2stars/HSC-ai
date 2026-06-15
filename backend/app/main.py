@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,30 @@ from app.core.config import settings
 
 logger = logging.getLogger("hsc-ai.system")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not settings.DEBUG:
+        from app.core.database import SessionLocal
+        from app.services.system_service import run_startup_diagnostics
+
+        # Any failure opening the DB session (unreachable, misconfigured) is fatal.
+        # Failures inside run_startup_diagnostics raise SystemExit for DB, log and
+        # continue for Redis/MinIO.
+        try:
+            async with SessionLocal() as db:
+                await run_startup_diagnostics(db)
+        except SystemExit:
+            raise
+        except Exception:
+            logger.critical(
+                "Cannot open database session at startup — "
+                "check DATABASE_URL and PostgreSQL status"
+            )
+            raise SystemExit(1)
+    yield
+
+
 app = FastAPI(
     title="HSC AI Platform",
     description="NSW exam preparation platform — backend API",
@@ -14,6 +39,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -23,25 +49,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    if settings.DEBUG:
-        return  # Skip startup diagnostics in dev/test — the dev server manages its own state
-
-    from app.core.database import SessionLocal
-    from app.services.system_service import run_startup_diagnostics
-
-    try:
-        async with SessionLocal() as db:
-            await run_startup_diagnostics(db)
-    except SystemExit:
-        raise
-    except Exception:
-        logger.exception("Startup diagnostics failed — continuing")
-
-
 
 from app.api.v1.router import router as v1_router  # noqa: E402
 
