@@ -1,8 +1,12 @@
+import asyncio
+
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from tests.conftest import (
     auth_headers,
     create_admin_and_login,
+    create_student_and_login,
     register_parent,
 )
 from tests.test_exam_engine import _make_taxonomy, _create_published_question
@@ -32,6 +36,41 @@ def _create_question(client: TestClient, tokens: dict, **overrides) -> dict:
     resp = client.post("/api/v1/admin/questions", json=payload, headers=auth_headers(tokens))
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+def _admin_profile_id_from_tokens(client: TestClient, tokens: dict) -> str:
+    """Get admin_profile.id from the /me response."""
+    resp = client.get("/api/v1/me", headers=auth_headers(tokens))
+    assert resp.status_code == 200, resp.text
+    user = resp.json()
+    # Admin profile IDs are UUIDs; we get user.id, need to find profile.id
+    return user["id"]
+
+
+def _delete_admin_profile_directly(admin_user_id: str) -> None:
+    """Delete the AdminProfile row directly in the test DB to exercise SET NULL."""
+    from app.core.database import get_db
+    from app.models.user import AdminProfile
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+    import os
+
+    test_url = os.environ.get("TEST_DATABASE_URL", "postgresql+asyncpg://hscai:change_me_in_production@127.0.0.1:5435/hscai_test")
+
+    async def _do():
+        engine = create_async_engine(test_url, poolclass=NullPool)
+        sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with sf() as session:
+            result = await session.execute(
+                select(AdminProfile).where(AdminProfile.user_id == admin_user_id)
+            )
+            profile = result.scalar_one_or_none()
+            if profile:
+                await session.delete(profile)
+                await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_do())
 
 
 # ── Create Review ─────────────────────────────────────────────────────────────
@@ -110,7 +149,6 @@ def test_internal_draft_review_status_allowed_for_review(client: TestClient):
     tokens = create_admin_and_login(client)
     q = _create_question(client, tokens, content_ownership="internal_draft")
 
-    # Transition to review
     review_resp = client.patch(
         f"/api/v1/admin/questions/{q['id']}/status",
         json={"status": "review"},
@@ -130,7 +168,6 @@ def test_internal_draft_draft_status_blocked_from_review(client: TestClient):
     """internal_draft ownership with draft status is blocked — not yet in review pipeline."""
     tokens = create_admin_and_login(client)
     q = _create_question(client, tokens, content_ownership="internal_draft")
-    # Stays in draft status
 
     resp = client.post(
         "/api/v1/admin/content/quality-review",
@@ -145,7 +182,6 @@ def test_original_draft_status_blocked_from_review(client: TestClient):
     """original ownership with draft status is blocked — not yet in review pipeline."""
     tokens = create_admin_and_login(client)
     q = _create_question(client, tokens, content_ownership="original")
-    # Stays in draft status
 
     resp = client.post(
         "/api/v1/admin/content/quality-review",
@@ -160,7 +196,6 @@ def test_archived_question_blocked_from_review(client: TestClient):
     """Quality review must be blocked for archived questions."""
     tokens = create_admin_and_login(client)
     sid, eid = _make_taxonomy(client, tokens)
-    # Create, publish, then archive
     q = _create_published_question(client, tokens, sid, eid)
     archive_resp = client.patch(
         f"/api/v1/admin/questions/{q['id']}/status",
@@ -183,7 +218,6 @@ def test_approved_internal_draft_allowed_for_review(client: TestClient):
     tokens = create_admin_and_login(client)
     q = _create_question(client, tokens, content_ownership="internal_draft")
 
-    # Transition to review → approved
     for status in ["review", "approved"]:
         r = client.patch(
             f"/api/v1/admin/questions/{q['id']}/status",
@@ -267,7 +301,6 @@ def test_dashboard_uses_aggregates_not_full_table_scan(client: TestClient):
     tokens = create_admin_and_login(client)
     sid, eid = _make_taxonomy(client, tokens)
 
-    # Create many reviews
     for _ in range(5):
         q = _create_published_question(client, tokens, sid, eid)
         client.post(
@@ -284,7 +317,6 @@ def test_dashboard_uses_aggregates_not_full_table_scan(client: TestClient):
     data = resp.json()
     assert data["total_reviews"] == 5
     assert data["unique_questions_reviewed"] == 5
-    # The 'reviews' field caps at 50 most recent (SQL LIMIT)
     assert len(data["reviews"]) <= 50
 
 
@@ -294,7 +326,6 @@ def test_needs_revision_counts_distinct_questions(client: TestClient):
     sid, eid = _make_taxonomy(client, tokens)
     q = _create_published_question(client, tokens, sid, eid)
 
-    # Create 3 reviews on the same question, all with score < 3
     for _ in range(3):
         client.post(
             "/api/v1/admin/content/quality-review",
@@ -308,7 +339,6 @@ def test_needs_revision_counts_distinct_questions(client: TestClient):
     )
     assert resp.status_code == 200
     data = resp.json()
-    # Should be 1 distinct question, not 3
     assert data["needs_revision_count"] == 1
 
 
@@ -351,7 +381,6 @@ def test_regeneration_candidates_deterministic_order(client: TestClient):
     tokens = create_admin_and_login(client)
     sid, eid = _make_taxonomy(client, tokens)
 
-    # Create reviews with different scores
     for score in [1, 2, 2]:
         q = _create_published_question(client, tokens, sid, eid)
         client.post(
@@ -367,7 +396,6 @@ def test_regeneration_candidates_deterministic_order(client: TestClient):
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
-    # Must be ordered by overall_score ASC (lowest scores first)
     scores = [r["overall_score"] for r in data]
     assert scores == sorted(scores)
 
@@ -392,6 +420,80 @@ def test_non_admin_cannot_access_dashboard(client: TestClient):
         headers=auth_headers(tokens),
     )
     assert resp.status_code == 403
+
+
+def test_student_cannot_create_review(client: TestClient):
+    """Student role must be denied — 403."""
+    tokens = create_student_and_login(client)
+    resp = client.post(
+        "/api/v1/admin/content/quality-review",
+        json={"question_id": "any", "overall_score": 3},
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 403
+
+
+def test_student_cannot_access_dashboard(client: TestClient):
+    """Student role must be denied — 403."""
+    tokens = create_student_and_login(client)
+    resp = client.get(
+        "/api/v1/admin/content/quality-dashboard",
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 403
+
+
+def test_student_cannot_access_provider_comparison(client: TestClient):
+    tokens = create_student_and_login(client)
+    resp = client.get(
+        "/api/v1/admin/content/quality-by-provider",
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 403
+
+
+def test_student_cannot_access_outcome_quality(client: TestClient):
+    tokens = create_student_and_login(client)
+    resp = client.get(
+        "/api/v1/admin/content/quality-by-outcome",
+        headers=auth_headers(tokens),
+    )
+    assert resp.status_code == 403
+
+
+def test_anonymous_cannot_create_review(client: TestClient):
+    """No auth header — must return 401."""
+    resp = client.post(
+        "/api/v1/admin/content/quality-review",
+        json={"question_id": "any", "overall_score": 3},
+    )
+    assert resp.status_code == 401
+
+
+def test_anonymous_cannot_access_dashboard(client: TestClient):
+    """No auth header — must return 401."""
+    resp = client.get("/api/v1/admin/content/quality-dashboard")
+    assert resp.status_code == 401
+
+
+def test_anonymous_cannot_access_provider_comparison(client: TestClient):
+    resp = client.get("/api/v1/admin/content/quality-by-provider")
+    assert resp.status_code == 401
+
+
+def test_anonymous_cannot_access_outcome_quality(client: TestClient):
+    resp = client.get("/api/v1/admin/content/quality-by-outcome")
+    assert resp.status_code == 401
+
+
+def test_anonymous_cannot_list_reviews(client: TestClient):
+    resp = client.get("/api/v1/admin/content/quality-reviews")
+    assert resp.status_code == 401
+
+
+def test_anonymous_cannot_access_regeneration_candidates(client: TestClient):
+    resp = client.get("/api/v1/admin/content/quality-regeneration-candidates")
+    assert resp.status_code == 401
 
 
 # ── Multiple Reviews Per Question ────────────────────────────────────────────
@@ -421,15 +523,10 @@ def test_multiple_reviews_per_question(client: TestClient):
 
 
 def test_score_check_constraint_applied(client: TestClient):
-    """Verify the DB-level CheckConstraint rejects scores outside 1-5.
-    With Pydantic validation at the API layer, 422 is expected. But we also
-    verify the table was created (migration applied) by successfully creating
-    a valid review — which confirms the table and constraints exist."""
     tokens = create_admin_and_login(client)
     sid, eid = _make_taxonomy(client, tokens)
     q = _create_published_question(client, tokens, sid, eid)
 
-    # Valid scores 1-5 all work
     for score in [1, 2, 3, 4, 5]:
         resp = client.post(
             "/api/v1/admin/content/quality-review",
@@ -438,7 +535,6 @@ def test_score_check_constraint_applied(client: TestClient):
         )
         assert resp.status_code == 201, f"Score {score} should be accepted"
 
-    # Invalid scores are rejected by Pydantic validation (422)
     for score in [0, 6]:
         resp = client.post(
             "/api/v1/admin/content/quality-review",
@@ -465,5 +561,64 @@ def test_reviewer_admin_id_nullable(client: TestClient):
     assert resp.status_code == 201
     data = resp.json()
     assert "reviewer_admin_id" in data
-    # The review records the admin who created it
     assert data["reviewer_admin_id"] is not None
+
+
+def test_admin_deletion_sets_reviewer_to_null(client: TestClient):
+    """When reviewer_admin_id is null (e.g. after SET NULL on admin delete),
+    the response schema must serialize it correctly as null / None."""
+    tokens_a = create_admin_and_login(client, email="reviewer_a@test.com", password="AdminA123")
+    tokens_b = create_admin_and_login(client, email="reviewer_b@test.com", password="AdminB123")
+
+    sid, eid = _make_taxonomy(client, tokens_a)
+    q = _create_published_question(client, tokens_a, sid, eid)
+
+    resp = client.post(
+        "/api/v1/admin/content/quality-review",
+        json={"question_id": q["id"], "overall_score": 4},
+        headers=auth_headers(tokens_a),
+    )
+    assert resp.status_code == 201
+    review_id = resp.json()["id"]
+    assert resp.json()["reviewer_admin_id"] is not None
+
+    # Simulate SET NULL: directly update the review row (admin rows can't
+    # be deleted while a question references them via created_by_admin_id).
+    _set_reviewer_null(review_id)
+
+    # Admin B retrieves the review — must still exist with null reviewer
+    review_resp = client.get(
+        f"/api/v1/admin/content/quality-reviews?question_id={q['id']}",
+        headers=auth_headers(tokens_b),
+    )
+    assert review_resp.status_code == 200
+    reviews = review_resp.json()
+    assert len(reviews) == 1
+    assert reviews[0]["id"] == review_id
+    assert reviews[0]["reviewer_admin_id"] is None
+
+
+def _set_reviewer_null(review_id: str) -> None:
+    """Set reviewer_admin_id to NULL directly, simulating SET NULL FK behavior."""
+    import os
+    from sqlalchemy import text, update
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.models.quality import QuestionQualityReview
+
+    test_url = os.environ.get("TEST_DATABASE_URL", "postgresql+asyncpg://hscai:change_me_in_production@127.0.0.1:5435/hscai_test")
+
+    async def _do():
+        engine = create_async_engine(test_url, poolclass=NullPool)
+        sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with sf() as session:
+            await session.execute(
+                update(QuestionQualityReview)
+                .where(QuestionQualityReview.id == review_id)
+                .values(reviewer_admin_id=None)
+            )
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_do())

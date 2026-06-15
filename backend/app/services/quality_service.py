@@ -237,7 +237,7 @@ async def get_quality_by_provider(db: AsyncSession) -> dict:
 
 
 async def get_quality_by_outcome(db: AsyncSession) -> list[dict]:
-    """Quality scores aggregated by curriculum outcome — single grouped query."""
+    """Quality scores aggregated by curriculum outcome — single grouped query including published counts."""
     result = await db.execute(
         select(
             CurriculumOutcome.code,
@@ -247,6 +247,7 @@ async def get_quality_by_outcome(db: AsyncSession) -> list[dict]:
             func.count(QuestionQualityReview.id).filter(
                 QuestionQualityReview.overall_score < 3
             ).label("needs_regen"),
+            func.count(Question.id).filter(Question.status == QuestionStatus.published).label("published_count"),
         )
         .select_from(CurriculumOutcome)
         .join(QuestionOutcomeMapping, QuestionOutcomeMapping.outcome_id == CurriculumOutcome.id)
@@ -257,31 +258,17 @@ async def get_quality_by_outcome(db: AsyncSession) -> list[dict]:
     )
     rows = result.fetchall()
 
-    results = []
-    for code, title, reviewed_count, avg_quality, needs_regen in rows:
-        # Count published questions for this outcome
-        count_result = await db.execute(
-            select(func.count(Question.id))
-            .select_from(CurriculumOutcome)
-            .join(QuestionOutcomeMapping, QuestionOutcomeMapping.outcome_id == CurriculumOutcome.id)
-            .join(Question, Question.id == QuestionOutcomeMapping.question_id)
-            .where(
-                CurriculumOutcome.code == code,
-                Question.status == QuestionStatus.published,
-            )
-        )
-        published = count_result.scalar() or 0
-
-        results.append({
+    return [
+        {
             "outcome_code": code,
             "outcome_title": title,
-            "total_questions": published,
+            "total_questions": published_count,
             "reviewed_count": reviewed_count,
             "average_quality": float(round(avg_quality, 1)) if avg_quality else 0,
             "needs_regeneration": needs_regen,
-        })
-
-    return results
+        }
+        for code, title, reviewed_count, avg_quality, needs_regen, published_count in rows
+    ]
 
 
 # ── Regeneration Candidates ──────────────────────────────────────────────────

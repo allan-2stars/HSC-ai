@@ -54,7 +54,7 @@ function QualityDashboard() {
         setRegen(r);
       })
       .catch((e) => {
-        if (e.status === 401) { clearTokens(); window.location.href = "/login"; }
+        if (e.status === 401) { clearTokens(); window.location.href = "/login"; return; }
         setError(e.detail ?? "Failed to load quality data");
       })
       .finally(() => setLoading(false));

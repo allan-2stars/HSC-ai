@@ -31,7 +31,7 @@ class QuestionQualityReview(Base):
         String(36), ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     reviewer_admin_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("admin_profiles.id", ondelete="SET NULL"), nullable=True
+        String(36), ForeignKey("admin_profiles.id", ondelete="SET NULL"), nullable=True, index=True
     )
     correctness_score: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=3)
     outcome_alignment_score: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=3)

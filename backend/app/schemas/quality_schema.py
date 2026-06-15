@@ -25,7 +25,7 @@ class QualityReviewCreate(BaseModel):
 class QualityReviewResponse(BaseModel):
     id: str
     question_id: str
-    reviewer_admin_id: str
+    reviewer_admin_id: str | None
     correctness_score: int
     outcome_alignment_score: int
     difficulty_score: int
