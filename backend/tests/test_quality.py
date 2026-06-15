@@ -1,7 +1,4 @@
-import asyncio
-
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from tests.conftest import (
     auth_headers,
@@ -36,41 +33,6 @@ def _create_question(client: TestClient, tokens: dict, **overrides) -> dict:
     resp = client.post("/api/v1/admin/questions", json=payload, headers=auth_headers(tokens))
     assert resp.status_code == 201, resp.text
     return resp.json()
-
-
-def _admin_profile_id_from_tokens(client: TestClient, tokens: dict) -> str:
-    """Get admin_profile.id from the /me response."""
-    resp = client.get("/api/v1/me", headers=auth_headers(tokens))
-    assert resp.status_code == 200, resp.text
-    user = resp.json()
-    # Admin profile IDs are UUIDs; we get user.id, need to find profile.id
-    return user["id"]
-
-
-def _delete_admin_profile_directly(admin_user_id: str) -> None:
-    """Delete the AdminProfile row directly in the test DB to exercise SET NULL."""
-    from app.core.database import get_db
-    from app.models.user import AdminProfile
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-    from sqlalchemy.pool import NullPool
-    import os
-
-    test_url = os.environ.get("TEST_DATABASE_URL", "postgresql+asyncpg://hscai:change_me_in_production@127.0.0.1:5435/hscai_test")
-
-    async def _do():
-        engine = create_async_engine(test_url, poolclass=NullPool)
-        sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with sf() as session:
-            result = await session.execute(
-                select(AdminProfile).where(AdminProfile.user_id == admin_user_id)
-            )
-            profile = result.scalar_one_or_none()
-            if profile:
-                await session.delete(profile)
-                await session.commit()
-        await engine.dispose()
-
-    asyncio.run(_do())
 
 
 # ── Create Review ─────────────────────────────────────────────────────────────
@@ -600,25 +562,18 @@ def test_admin_deletion_sets_reviewer_to_null(client: TestClient):
 
 def _set_reviewer_null(review_id: str) -> None:
     """Set reviewer_admin_id to NULL directly, simulating SET NULL FK behavior."""
-    import os
-    from sqlalchemy import text, update
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-    from sqlalchemy.pool import NullPool
+    from sqlalchemy import update
+    from tests.conftest import _SessionFactory, _run
 
     from app.models.quality import QuestionQualityReview
 
-    test_url = os.environ.get("TEST_DATABASE_URL", "postgresql+asyncpg://hscai:change_me_in_production@127.0.0.1:5435/hscai_test")
-
     async def _do():
-        engine = create_async_engine(test_url, poolclass=NullPool)
-        sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with sf() as session:
+        async with _SessionFactory() as session:
             await session.execute(
                 update(QuestionQualityReview)
                 .where(QuestionQualityReview.id == review_id)
                 .values(reviewer_admin_id=None)
             )
             await session.commit()
-        await engine.dispose()
 
-    asyncio.run(_do())
+    _run(_do())
