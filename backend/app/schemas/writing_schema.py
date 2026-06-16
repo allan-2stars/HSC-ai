@@ -52,6 +52,7 @@ class WritingSubmissionListItem(BaseModel):
     student_name: str | None
     word_count: int
     status: str
+    content: str | None = None
     started_at: str | None
     submitted_at: str | None
 

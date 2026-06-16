@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -59,6 +60,9 @@ class WritingTask(Base, TimestampMixin):
 
 class WritingSubmission(Base, TimestampMixin):
     __tablename__ = "writing_submissions"
+    __table_args__ = (
+        UniqueConstraint("writing_task_id", "student_id", name="uq_writing_submission_task_student"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     writing_task_id: Mapped[str] = mapped_column(

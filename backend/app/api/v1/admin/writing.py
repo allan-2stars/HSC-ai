@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_admin_profile
 from app.models.user import AdminProfile
-from app.models.writing import WritingSubmissionStatus, WritingTaskStatus
+from app.models.writing import WritingTaskStatus
 from app.schemas.writing_schema import (
     WritingSubmissionListItem,
     WritingTaskCreate,
@@ -44,8 +44,7 @@ async def list_writing_tasks(
     _: AdminProfile = Depends(get_current_admin_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    status_filter = WritingTaskStatus(status) if status else None
-    tasks = await writing_service.list_writing_tasks(db, status_filter=status_filter)
+    tasks = await writing_service.list_writing_tasks(db, status_str=status)
     return [_task_to_response(t) for t in tasks]
 
 
@@ -83,9 +82,8 @@ async def list_all_submissions(
     _: AdminProfile = Depends(get_current_admin_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    status_filter = WritingSubmissionStatus(status) if status else None
     return await writing_service.list_all_submissions(
-        db, task_id=task_id, status_filter=status_filter
+        db, task_id=task_id, status_str=status
     )
 
 

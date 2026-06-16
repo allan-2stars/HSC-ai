@@ -1,8 +1,10 @@
 """Writing mode — task management, student responses, autosave, submission."""
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import StudentProfile
@@ -12,6 +14,22 @@ from app.models.writing import (
     WritingTask,
     WritingTaskStatus,
 )
+
+logger = logging.getLogger("hsc-ai.writing")
+
+
+def _compute_word_count(content: str) -> int:
+    return len(content.strip().split()) if content.strip() else 0
+
+
+def _validate_status_enum(value: str, enum_cls, label: str):
+    try:
+        return enum_cls(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Invalid {label}: '{value}'",
+        )
 
 
 # ── Admin: Writing Tasks ───────────────────────────────────────────────────
@@ -47,10 +65,11 @@ async def create_writing_task(
 
 async def list_writing_tasks(
     db: AsyncSession,
-    status_filter: WritingTaskStatus | None = None,
+    status_str: str | None = None,
 ) -> list[WritingTask]:
     stmt = select(WritingTask).order_by(WritingTask.created_at.desc())
-    if status_filter:
+    if status_str:
+        status_filter = _validate_status_enum(status_str, WritingTaskStatus, "task status")
         stmt = stmt.where(WritingTask.status == status_filter)
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -80,7 +99,15 @@ async def update_writing_task_status(
 async def get_or_create_submission(
     task_id: str, student_id: str, db: AsyncSession
 ) -> WritingSubmission:
-    """Get existing draft submission or create a new one."""
+    """Get existing submission or create a new one. Concurrency-safe via
+    unique constraint — if two requests race and one creates the row first,
+    the second will get an IntegrityError and retry the SELECT."""
+    # Verify task exists and is published
+    task = await get_writing_task(task_id, db)
+    if task.status != WritingTaskStatus.published:
+        raise HTTPException(status_code=422, detail="Writing task is not published")
+
+    # Fast path: find existing
     result = await db.execute(
         select(WritingSubmission)
         .where(
@@ -92,11 +119,7 @@ async def get_or_create_submission(
     if sub:
         return sub
 
-    # Verify task exists and is published
-    task = await get_writing_task(task_id, db)
-    if task.status != WritingTaskStatus.published:
-        raise HTTPException(status_code=422, detail="Writing task is not published")
-
+    # Slow path: create new, handle race
     sub = WritingSubmission(
         writing_task_id=task_id,
         student_id=student_id,
@@ -106,23 +129,54 @@ async def get_or_create_submission(
         started_at=datetime.now(tz=timezone.utc),
     )
     db.add(sub)
-    await db.commit()
-    await db.refresh(sub)
-    return sub
+    try:
+        await db.commit()
+        await db.refresh(sub)
+        return sub
+    except IntegrityError:
+        await db.rollback()
+        # Race: another request already created it. Retrieve the winner.
+        result = await db.execute(
+            select(WritingSubmission)
+            .where(
+                WritingSubmission.writing_task_id == task_id,
+                WritingSubmission.student_id == student_id,
+            )
+        )
+        sub = result.scalar_one_or_none()
+        if sub:
+            return sub
+        raise HTTPException(status_code=500, detail="Failed to create submission after conflict")
 
 
 async def save_submission(
     submission_id: str,
     student_id: str,
     content: str,
-    word_count: int,
     db: AsyncSession,
 ) -> WritingSubmission:
-    sub = await _get_owned_submission(submission_id, student_id, db)
+    """Save draft content. Word count computed server-side.
+    Uses SELECT FOR UPDATE for atomicity."""
+    result = await db.execute(
+        select(WritingSubmission)
+        .where(WritingSubmission.id == submission_id)
+        .with_for_update()
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if sub.student_id != student_id:
+        raise HTTPException(status_code=403, detail="Not your submission")
     if sub.status == WritingSubmissionStatus.submitted:
         raise HTTPException(status_code=422, detail="Cannot edit submitted response")
+
+    # Verify parent task not archived
+    task = await get_writing_task(sub.writing_task_id, db)
+    if task.status == WritingTaskStatus.archived:
+        raise HTTPException(status_code=422, detail="Cannot edit submission for an archived task")
+
     sub.content = content
-    sub.word_count = word_count
+    sub.word_count = _compute_word_count(content)
     await db.commit()
     await db.refresh(sub)
     return sub
@@ -131,9 +185,27 @@ async def save_submission(
 async def submit_submission(
     submission_id: str, student_id: str, db: AsyncSession
 ) -> WritingSubmission:
-    sub = await _get_owned_submission(submission_id, student_id, db)
+    """Submit final response. Uses SELECT FOR UPDATE for atomicity.
+    Recomputes word count server-side."""
+    result = await db.execute(
+        select(WritingSubmission)
+        .where(WritingSubmission.id == submission_id)
+        .with_for_update()
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if sub.student_id != student_id:
+        raise HTTPException(status_code=403, detail="Not your submission")
     if sub.status == WritingSubmissionStatus.submitted:
         raise HTTPException(status_code=422, detail="Already submitted")
+
+    # Verify parent task not archived
+    task = await get_writing_task(sub.writing_task_id, db)
+    if task.status == WritingTaskStatus.archived:
+        raise HTTPException(status_code=422, detail="Cannot submit to an archived task")
+
+    sub.word_count = _compute_word_count(sub.content)
     sub.status = WritingSubmissionStatus.submitted
     sub.submitted_at = datetime.now(tz=timezone.utc)
     await db.commit()
@@ -144,7 +216,15 @@ async def submit_submission(
 async def get_student_submission(
     submission_id: str, student_id: str, db: AsyncSession
 ) -> WritingSubmission:
-    return await _get_owned_submission(submission_id, student_id, db)
+    result = await db.execute(
+        select(WritingSubmission).where(WritingSubmission.id == submission_id)
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if sub.student_id != student_id:
+        raise HTTPException(status_code=403, detail="Not your submission")
+    return sub
 
 
 async def list_student_submissions(
@@ -185,7 +265,6 @@ async def list_student_available_tasks(
     )
     tasks = list(tasks_result.scalars().all())
 
-    # Get existing submissions for this student
     subs_result = await db.execute(
         select(WritingSubmission).where(WritingSubmission.student_id == student_id)
     )
@@ -234,7 +313,7 @@ async def get_student_submissions_for_parent(
 async def list_all_submissions(
     db: AsyncSession,
     task_id: str | None = None,
-    status_filter: WritingSubmissionStatus | None = None,
+    status_str: str | None = None,
 ) -> list[dict]:
     stmt = (
         select(WritingSubmission, WritingTask.title, StudentProfile.display_name)
@@ -243,7 +322,8 @@ async def list_all_submissions(
     )
     if task_id:
         stmt = stmt.where(WritingSubmission.writing_task_id == task_id)
-    if status_filter:
+    if status_str:
+        status_filter = _validate_status_enum(status_str, WritingSubmissionStatus, "submission status")
         stmt = stmt.where(WritingSubmission.status == status_filter)
     stmt = stmt.order_by(WritingSubmission.updated_at.desc())
     result = await db.execute(stmt)
@@ -266,20 +346,3 @@ async def list_all_submissions(
         }
         for sub, task_title, student_name in rows
     ]
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────
-
-
-async def _get_owned_submission(
-    submission_id: str, student_id: str, db: AsyncSession
-) -> WritingSubmission:
-    result = await db.execute(
-        select(WritingSubmission).where(WritingSubmission.id == submission_id)
-    )
-    sub = result.scalar_one_or_none()
-    if not sub:
-        raise HTTPException(status_code=404, detail="Submission not found")
-    if sub.student_id != student_id:
-        raise HTTPException(status_code=403, detail="Not your submission")
-    return sub

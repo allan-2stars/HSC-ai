@@ -49,7 +49,7 @@ async def save_writing(
 ):
     profile = await get_student_profile(student.id, db)
     sub = await writing_service.save_submission(
-        submission_id, profile.id, body.content, body.word_count, db
+        submission_id, profile.id, body.content, db
     )
     return _sub_to_response(sub)
 

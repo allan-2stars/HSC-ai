@@ -1,4 +1,4 @@
-"""Writing mode — task creation, student response, autosave, submission, RBAC."""
+"""Writing mode — task creation, student response, autosave, submission, RBAC, hardening."""
 from fastapi.testclient import TestClient
 
 from tests.conftest import (
@@ -8,6 +8,29 @@ from tests.conftest import (
     register_parent,
 )
 from tests.test_exam_engine import _make_taxonomy
+
+
+def _setup_published_task(client: TestClient) -> tuple[str, str, str, dict]:
+    """Create admin, taxonomy, publish a task. Returns (task_id, subject_id, exam_type_id, admin_tokens)."""
+    admin_tokens = create_admin_and_login(client)
+    sid, eid = _make_taxonomy(client, admin_tokens)
+    create_resp = client.post(
+        "/api/v1/admin/writing/tasks",
+        json={"title": "Test Task", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
+        headers=auth_headers(admin_tokens),
+    )
+    task_id = create_resp.json()["id"]
+    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/publish", headers=auth_headers(admin_tokens))
+    return task_id, sid, eid, admin_tokens
+
+
+def _start_writing(client: TestClient, task_id: str, student_tokens: dict) -> str:
+    resp = client.post(
+        f"/api/v1/writing/tasks/{task_id}/start",
+        headers=auth_headers(student_tokens),
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["id"]
 
 
 # ── Admin: Create Writing Task ─────────────────────────────────────────────
@@ -71,24 +94,26 @@ def test_admin_can_publish_writing_task(client: TestClient):
     assert resp.json()["status"] == "published"
 
 
+# ── Invalid status query returns 422 ──────────────────────────────────────
+
+
+def test_admin_list_tasks_invalid_status_returns_422(client: TestClient):
+    tokens = create_admin_and_login(client)
+    resp = client.get("/api/v1/admin/writing/tasks?status=invalid_status", headers=auth_headers(tokens))
+    assert resp.status_code == 422
+
+
+def test_admin_list_submissions_invalid_status_returns_422(client: TestClient):
+    tokens = create_admin_and_login(client)
+    resp = client.get("/api/v1/admin/writing/submissions?status=bad_status", headers=auth_headers(tokens))
+    assert resp.status_code == 422
+
+
 # ── Student: Start, Save, Submit ───────────────────────────────────────────
 
 
 def test_student_can_start_writing(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Start Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    task_id = create_resp.json()["id"]
-    client.patch(
-        f"/api/v1/admin/writing/tasks/{task_id}/publish",
-        headers=auth_headers(admin_tokens),
-    )
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
     resp = client.post(
         f"/api/v1/writing/tasks/{task_id}/start",
@@ -103,14 +128,12 @@ def test_student_can_start_writing(client: TestClient):
 def test_student_cannot_start_unpublished_task(client: TestClient):
     admin_tokens = create_admin_and_login(client)
     sid, eid = _make_taxonomy(client, admin_tokens)
-
     create_resp = client.post(
         "/api/v1/admin/writing/tasks",
         json={"title": "Draft Task", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
         headers=auth_headers(admin_tokens),
     )
     task_id = create_resp.json()["id"]
-    # Don't publish — stays draft
 
     student_tokens = create_student_and_login(client)
     resp = client.post(
@@ -121,23 +144,9 @@ def test_student_cannot_start_unpublished_task(client: TestClient):
 
 
 def test_student_can_save_draft(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Save Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    task_id = create_resp.json()["id"]
-    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{task_id}/start",
-        headers=auth_headers(student_tokens),
-    )
-    sub_id = start_resp.json()["id"]
+    sub_id = _start_writing(client, task_id, student_tokens)
 
     resp = client.patch(
         f"/api/v1/writing/submissions/{sub_id}/save",
@@ -145,32 +154,36 @@ def test_student_can_save_draft(client: TestClient):
         headers=auth_headers(student_tokens),
     )
     assert resp.status_code == 200
-    assert resp.json()["content"] == "My essay draft"
-    assert resp.json()["word_count"] == 3
+    data = resp.json()
+    assert data["content"] == "My essay draft"
+    # word_count computed server-side
+    assert data["word_count"] == 3  # "My essay draft" = 3 words
+
+
+def test_word_count_computed_server_side(client: TestClient):
+    """Server must compute word_count from content, ignoring client value."""
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    # Send word_count=999 but only 2 words actually
+    resp = client.patch(
+        f"/api/v1/writing/submissions/{sub_id}/save",
+        json={"content": "Hello world", "word_count": 999},
+        headers=auth_headers(student_tokens),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["word_count"] == 2  # server-calculated, not 999
 
 
 def test_student_can_submit(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Submit Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    task_id = create_resp.json()["id"]
-    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{task_id}/start",
-        headers=auth_headers(student_tokens),
-    )
-    sub_id = start_resp.json()["id"]
+    sub_id = _start_writing(client, task_id, student_tokens)
 
     client.patch(
         f"/api/v1/writing/submissions/{sub_id}/save",
-        json={"content": "Final essay", "word_count": 2},
+        json={"content": "Final essay with several words here.", "word_count": 2},
         headers=auth_headers(student_tokens),
     )
 
@@ -182,26 +195,14 @@ def test_student_can_submit(client: TestClient):
     data = resp.json()
     assert data["status"] == "submitted"
     assert data["submitted_at"] is not None
+    # word_count recomputed on submit
+    assert data["word_count"] == 6  # "Final essay with several words here."
 
 
 def test_student_cannot_edit_after_submit(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Immutable Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    task_id = create_resp.json()["id"]
-    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{task_id}/start",
-        headers=auth_headers(student_tokens),
-    )
-    sub_id = start_resp.json()["id"]
+    sub_id = _start_writing(client, task_id, student_tokens)
 
     client.post(f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens))
 
@@ -211,6 +212,73 @@ def test_student_cannot_edit_after_submit(client: TestClient):
         headers=auth_headers(student_tokens),
     )
     assert resp.status_code == 422
+
+
+# ── Duplicate submission protection ────────────────────────────────────────
+
+
+def test_duplicate_start_returns_existing_submission(client: TestClient):
+    """Starting the same task twice must return the existing submission, not create a duplicate."""
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+
+    resp1 = client.post(f"/api/v1/writing/tasks/{task_id}/start", headers=auth_headers(student_tokens))
+    assert resp1.status_code == 200
+    sub_id = resp1.json()["id"]
+
+    resp2 = client.post(f"/api/v1/writing/tasks/{task_id}/start", headers=auth_headers(student_tokens))
+    assert resp2.status_code == 200
+    assert resp2.json()["id"] == sub_id  # same submission
+
+
+# ── Archived task protection ───────────────────────────────────────────────
+
+
+def test_cannot_save_on_archived_task(client: TestClient):
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    # Archive the task
+    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/archive", headers=auth_headers(admin_tokens))
+
+    resp = client.patch(
+        f"/api/v1/writing/submissions/{sub_id}/save",
+        json={"content": "Late edit", "word_count": 2},
+        headers=auth_headers(student_tokens),
+    )
+    assert resp.status_code == 422
+
+
+def test_cannot_submit_to_archived_task(client: TestClient):
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    client.patch(f"/api/v1/admin/writing/tasks/{task_id}/archive", headers=auth_headers(admin_tokens))
+
+    resp = client.post(f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens))
+    assert resp.status_code == 422
+
+
+# ── Submit-after-save integrity ────────────────────────────────────────────
+
+
+def test_submit_recomputes_word_count(client: TestClient):
+    """Submitting must recompute word count server-side."""
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    client.patch(
+        f"/api/v1/writing/submissions/{sub_id}/save",
+        json={"content": "Four score and seven", "word_count": 999},
+        headers=auth_headers(student_tokens),
+    )
+
+    resp = client.post(f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens))
+    assert resp.status_code == 200
+    assert resp.json()["word_count"] == 4  # "Four score and seven"
 
 
 def test_student_can_list_available_tasks(client: TestClient):
@@ -234,38 +302,20 @@ def test_student_can_list_available_tasks(client: TestClient):
 
 def test_autosave_preserves_content(client: TestClient):
     """Multiple saves must preserve the latest content."""
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Autosave Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    client.patch(f"/api/v1/admin/writing/tasks/{create_resp.json()["id"]}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{create_resp.json()["id"]}/start",
-        headers=auth_headers(student_tokens),
-    )
-    sub_id = start_resp.json()["id"]
+    sub_id = _start_writing(client, task_id, student_tokens)
 
-    # Simulate 3 autosaves
-    for i, text in enumerate(["First draft.", "Second draft.", "Final draft."]):
+    for text in ["First draft.", "Second draft.", "Final draft."]:
         resp = client.patch(
             f"/api/v1/writing/submissions/{sub_id}/save",
-            json={"content": text, "word_count": 2},
+            json={"content": text, "word_count": 0},
             headers=auth_headers(student_tokens),
         )
         assert resp.status_code == 200
         assert resp.json()["content"] == text
 
-    # Final fetch confirms last save persisted
-    get_resp = client.get(
-        f"/api/v1/writing/submissions/{sub_id}",
-        headers=auth_headers(student_tokens),
-    )
+    get_resp = client.get(f"/api/v1/writing/submissions/{sub_id}", headers=auth_headers(student_tokens))
     assert get_resp.json()["content"] == "Final draft."
 
 
@@ -273,22 +323,11 @@ def test_autosave_preserves_content(client: TestClient):
 
 
 def test_admin_can_list_all_submissions(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Review Test", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    client.patch(f"/api/v1/admin/writing/tasks/{create_resp.json()["id"]}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{create_resp.json()["id"]}/start",
-        headers=auth_headers(student_tokens),
-    )
-    client.post(f"/api/v1/writing/submissions/{start_resp.json()["id"]}/submit", headers=auth_headers(student_tokens))
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    client.post(f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens))
 
     resp = client.get("/api/v1/admin/writing/submissions", headers=auth_headers(admin_tokens))
     assert resp.status_code == 200
@@ -297,17 +336,33 @@ def test_admin_can_list_all_submissions(client: TestClient):
     assert submissions[0]["status"] == "submitted"
 
 
+def test_admin_submissions_include_content(client: TestClient):
+    """Admin submission list must include the essay content field."""
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    client.patch(
+        f"/api/v1/writing/submissions/{sub_id}/save",
+        json={"content": "My essay content here.", "word_count": 0},
+        headers=auth_headers(student_tokens),
+    )
+    client.post(f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens))
+
+    resp = client.get("/api/v1/admin/writing/submissions", headers=auth_headers(admin_tokens))
+    submissions = resp.json()
+    assert "content" in submissions[0]
+    assert submissions[0]["content"] == "My essay content here."
+
+
 # ── Parent: View Student Writing ───────────────────────────────────────────
 
 
 def test_parent_can_view_student_writing(client: TestClient):
     parent_tokens = register_parent(client)
 
-    student_tokens = create_student_and_login(client, parent_tokens=parent_tokens)
+    create_student_and_login(client, parent_tokens=parent_tokens)
 
-    # Get student profile id
-    me_resp = client.get("/api/v1/me", headers=auth_headers(student_tokens))
-    # Need the student profile ID from the student listing
     students_resp = client.get("/api/v1/parents/students", headers=auth_headers(parent_tokens))
     student_id = students_resp.json()[0]["id"]
 
@@ -335,19 +390,11 @@ def test_non_admin_cannot_create_writing_task(client: TestClient):
 
 
 def test_non_student_cannot_start_writing(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "RBAC", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    client.patch(f"/api/v1/admin/writing/tasks/{create_resp.json()["id"]}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     parent_tokens = register_parent(client)
+
     resp = client.post(
-        f"/api/v1/writing/tasks/{create_resp.json()["id"]}/start",
+        f"/api/v1/writing/tasks/{task_id}/start",
         headers=auth_headers(parent_tokens),
     )
     assert resp.status_code == 403
@@ -359,22 +406,9 @@ def test_anonymous_cannot_access_writing(client: TestClient):
 
 
 def test_student_cannot_access_other_student_submission(client: TestClient):
-    admin_tokens = create_admin_and_login(client)
-    sid, eid = _make_taxonomy(client, admin_tokens)
-
-    create_resp = client.post(
-        "/api/v1/admin/writing/tasks",
-        json={"title": "Ownership", "prompt": "Write.", "subject_id": sid, "exam_type_id": eid},
-        headers=auth_headers(admin_tokens),
-    )
-    client.patch(f"/api/v1/admin/writing/tasks/{create_resp.json()["id"]}/publish", headers=auth_headers(admin_tokens))
-
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
     student1_tokens = create_student_and_login(client)
-    start_resp = client.post(
-        f"/api/v1/writing/tasks/{create_resp.json()["id"]}/start",
-        headers=auth_headers(student1_tokens),
-    )
-    sub_id = start_resp.json()["id"]
+    sub_id = _start_writing(client, task_id, student1_tokens)
 
     student2_tokens = create_student_and_login(client)
     resp = client.get(
@@ -393,7 +427,6 @@ def test_parent_cannot_view_other_parent_student_writing(client: TestClient):
     students2 = client.get("/api/v1/parents/students", headers=auth_headers(parent2_tokens))
     student2_id = students2.json()[0]["id"]
 
-    # Parent 1 tries to view Parent 2's student
     resp = client.get(
         f"/api/v1/parents/students/{student2_id}/writing",
         headers=auth_headers(parent1_tokens),
