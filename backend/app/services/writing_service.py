@@ -183,10 +183,13 @@ async def save_submission(
 
 
 async def submit_submission(
-    submission_id: str, student_id: str, db: AsyncSession
+    submission_id: str,
+    student_id: str,
+    db: AsyncSession,
+    student_user_id: str | None = None,
 ) -> WritingSubmission:
     """Submit final response. Uses SELECT FOR UPDATE for atomicity.
-    Recomputes word count server-side."""
+    Recomputes word count server-side. Opens a pending human review."""
     result = await db.execute(
         select(WritingSubmission)
         .where(WritingSubmission.id == submission_id)
@@ -208,6 +211,13 @@ async def submit_submission(
     sub.word_count = _compute_word_count(sub.content)
     sub.status = WritingSubmissionStatus.submitted
     sub.submitted_at = datetime.now(tz=timezone.utc)
+
+    # Open the human review lifecycle for this submission.
+    from app.services import writing_review_service
+    await writing_review_service.create_review_for_submission(
+        sub.id, db, student_user_id=student_user_id
+    )
+
     await db.commit()
     await db.refresh(sub)
     return sub

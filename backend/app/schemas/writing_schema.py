@@ -59,3 +59,11 @@ class WritingSubmissionListItem(BaseModel):
 
 class AdminReviewNote(BaseModel):
     review_notes: str
+
+
+# ── Human review workflow (M5.1) ───────────────────────────────────────────
+
+
+class WritingFeedbackCreate(BaseModel):
+    overall_comment: str
+    dimensions: list | None = None

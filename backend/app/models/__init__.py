@@ -76,6 +76,9 @@ from app.models.quality import (  # noqa: F401
     QuestionQualityReview,
 )
 from app.models.writing import (  # noqa: F401
+    WritingFeedback,
+    WritingReview,
+    WritingReviewStatus,
     WritingSubmission,
     WritingSubmissionStatus,
     WritingTask,

@@ -689,6 +689,34 @@ export const api = {
 
   listAllWritingSubmissions: (token: string, taskId?: string) =>
     request<WritingSubmissionListItem[]>(`/v1/admin/writing/submissions${taskId ? `?task_id=${taskId}` : ""}`, {}, token),
+
+  // ── Human review workflow (M5.1) ──────────────────────────────
+  // Admin
+  listWritingReviews: (token: string, status?: string) =>
+    request<WritingReviewItem[]>(`/v1/admin/writing/reviews${status ? `?status=${status}` : ""}`, {}, token),
+
+  getWritingReview: (reviewId: string, token: string) =>
+    request<WritingReviewDetail>(`/v1/admin/writing/reviews/${reviewId}`, {}, token),
+
+  assignWritingReview: (reviewId: string, token: string) =>
+    request<WritingReviewItem>(`/v1/admin/writing/reviews/${reviewId}/assign`, { method: "POST" }, token),
+
+  addWritingFeedback: (reviewId: string, body: WritingFeedbackBody, token: string) =>
+    request<WritingReviewDetail>(`/v1/admin/writing/reviews/${reviewId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, token),
+
+  publishWritingReview: (reviewId: string, token: string) =>
+    request<WritingReviewItem>(`/v1/admin/writing/reviews/${reviewId}/publish`, { method: "POST" }, token),
+
+  // Student
+  getWritingFeedback: (submissionId: string, token: string) =>
+    request<WritingFeedbackView>(`/v1/writing/submissions/${submissionId}/feedback`, {}, token),
+
+  // Parent
+  getStudentWritingFeedback: (studentId: string, submissionId: string, token: string) =>
+    request<WritingFeedbackView>(`/v1/parents/students/${studentId}/writing/${submissionId}/feedback`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -809,4 +837,66 @@ export interface WritingSubmissionListItem {
   started_at: string | null;
   submitted_at: string | null;
   content?: string;
+}
+
+// ── Human review workflow (M5.1) ───────────────────────────────
+
+export type WritingReviewStatus =
+  | "pending"
+  | "assigned"
+  | "under_review"
+  | "reviewed"
+  | "published";
+
+export interface WritingReviewItem {
+  id: string;
+  submission_id: string;
+  status: WritingReviewStatus;
+  reviewer_admin_id: string | null;
+  assigned_at: string | null;
+  review_started_at: string | null;
+  published_at: string | null;
+  latest_feedback_version: number | null;
+  task_title?: string;
+  student_name?: string | null;
+  word_count?: number;
+  submitted_at?: string | null;
+}
+
+export interface WritingFeedbackDimension {
+  name: string;
+  comment: string;
+}
+
+export interface WritingFeedback {
+  version: number;
+  overall_comment: string;
+  dimensions: WritingFeedbackDimension[] | null;
+  created_at: string | null;
+}
+
+export interface WritingReviewDetail extends WritingReviewItem {
+  submission: {
+    id: string;
+    content: string;
+    word_count: number;
+    student_name: string | null;
+    task_title: string;
+    submitted_at: string | null;
+  };
+  feedback: WritingFeedback | null;
+}
+
+export interface WritingFeedbackBody {
+  overall_comment: string;
+  dimensions?: WritingFeedbackDimension[] | null;
+}
+
+export interface WritingFeedbackView {
+  submission_id: string;
+  version: number;
+  overall_comment: string;
+  dimensions: WritingFeedbackDimension[] | null;
+  published_at: string | null;
+  disclaimer: string;
 }

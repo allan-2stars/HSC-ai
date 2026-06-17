@@ -90,10 +90,43 @@ def db_schema() -> Generator:
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
+            # metadata.create_all only builds tables/constraints expressed in the ORM —
+            # raw-SQL migration objects (triggers, functions) must be installed separately.
+            await conn.execute(text("""
+                CREATE OR REPLACE FUNCTION prevent_submitted_writing_update()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    IF OLD.status = 'submitted' THEN
+                        RAISE EXCEPTION 'Cannot modify a submitted writing response';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+            """))
+            await conn.execute(text("""
+                CREATE TRIGGER trg_writing_submission_immutable
+                BEFORE UPDATE ON writing_submissions
+                FOR EACH ROW EXECUTE FUNCTION prevent_submitted_writing_update()
+            """))
+            await conn.execute(text("""
+                CREATE OR REPLACE FUNCTION prevent_writing_feedback_mutation()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    RAISE EXCEPTION 'writing_feedback is append-only';
+                END;
+                $$ LANGUAGE plpgsql
+            """))
+            await conn.execute(text("""
+                CREATE TRIGGER trg_writing_feedback_append_only
+                BEFORE UPDATE OR DELETE ON writing_feedback
+                FOR EACH ROW EXECUTE FUNCTION prevent_writing_feedback_mutation()
+            """))
 
     async def _drop():
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+            await conn.execute(text("DROP FUNCTION IF EXISTS prevent_submitted_writing_update() CASCADE"))
+            await conn.execute(text("DROP FUNCTION IF EXISTS prevent_writing_feedback_mutation() CASCADE"))
         await _engine.dispose()
 
     _run(_create())

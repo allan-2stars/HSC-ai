@@ -1,7 +1,13 @@
 """Writing mode — task creation, student response, autosave, submission, RBAC, hardening."""
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError
 
+from app.models.writing import WritingSubmission, WritingSubmissionStatus
 from tests.conftest import (
+    _run,
+    _SessionFactory,
     auth_headers,
     create_admin_and_login,
     create_student_and_login,
@@ -353,6 +359,44 @@ def test_admin_submissions_include_content(client: TestClient):
     submissions = resp.json()
     assert "content" in submissions[0]
     assert submissions[0]["content"] == "My essay content here."
+
+
+# ── DB-level immutability trigger ──────────────────────────────────────────
+
+
+def test_immutability_trigger_rejects_any_update_after_submit(client: TestClient):
+    """The DB trigger must deny-by-default: once status='submitted', no column
+    on the row may change, not just content/status. Bypasses the service layer
+    entirely via a direct UPDATE to prove the constraint is DB-enforced."""
+    task_id, sid, eid, admin_tokens = _setup_published_task(client)
+    student_tokens = create_student_and_login(client)
+    sub_id = _start_writing(client, task_id, student_tokens)
+
+    client.patch(
+        f"/api/v1/writing/submissions/{sub_id}/save",
+        json={"content": "Locked content", "word_count": 0},
+        headers=auth_headers(student_tokens),
+    )
+    submit_resp = client.post(
+        f"/api/v1/writing/submissions/{sub_id}/submit", headers=auth_headers(student_tokens)
+    )
+    assert submit_resp.status_code == 200
+
+    async def _try_update(values: dict):
+        async with _SessionFactory() as session:
+            await session.execute(
+                update(WritingSubmission).where(WritingSubmission.id == sub_id).values(**values)
+            )
+            await session.commit()
+
+    with pytest.raises(DBAPIError, match="Cannot modify a submitted writing response"):
+        _run(_try_update({"word_count": 9999}))
+
+    with pytest.raises(DBAPIError, match="Cannot modify a submitted writing response"):
+        _run(_try_update({"content": "tampered"}))
+
+    with pytest.raises(DBAPIError, match="Cannot modify a submitted writing response"):
+        _run(_try_update({"status": WritingSubmissionStatus.draft}))
 
 
 # ── Parent: View Student Writing ───────────────────────────────────────────

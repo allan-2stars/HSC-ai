@@ -22,14 +22,15 @@ def upgrade() -> None:
         ['writing_task_id', 'student_id'],
     )
     # Immutability trigger — create function first, then trigger (separate calls for asyncpg)
+    # Deny-by-default: once a response is submitted, no column on the row may
+    # change. Review/feedback data must live in a separate table, not mutate
+    # the submitted response.
     op.execute("""
         CREATE OR REPLACE FUNCTION prevent_submitted_writing_update()
         RETURNS TRIGGER AS $$
         BEGIN
-            IF OLD.status = 'submitted' AND (
-                NEW.content != OLD.content OR NEW.status != OLD.status
-            ) THEN
-                RAISE EXCEPTION 'Cannot modify submitted writing response';
+            IF OLD.status = 'submitted' THEN
+                RAISE EXCEPTION 'Cannot modify a submitted writing response';
             END IF;
             RETURN NEW;
         END;

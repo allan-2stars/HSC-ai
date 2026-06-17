@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -10,7 +10,7 @@ from app.schemas.user import (
     StudentResponse,
     StudentUpdateRequest,
 )
-from app.services import family_service, writing_service
+from app.services import family_service, writing_review_service, writing_service
 
 router = APIRouter(tags=["parents"])
 
@@ -113,3 +113,19 @@ async def list_student_writing(
     return await writing_service.get_student_submissions_for_parent(
         student_id, student_ids, db
     )
+
+
+@router.get("/parents/students/{student_id}/writing/{submission_id}/feedback")
+async def get_student_writing_feedback(
+    student_id: str,
+    submission_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    # Verify the submission belongs to this student (403 if not).
+    await writing_service.get_student_submission(submission_id, student_id, db)
+    return await writing_review_service.get_published_feedback_for_submission(submission_id, db)

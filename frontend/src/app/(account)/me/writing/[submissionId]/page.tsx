@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingSubmissionResponse } from "@/lib/api";
+import { api, type WritingSubmissionResponse, type WritingFeedbackView } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -25,11 +25,12 @@ function WritingEditor() {
   const [wordCount, setWordCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [feedback, setFeedback] = useState<WritingFeedbackView | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [saveError, setSaveError] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentRef = useRef(content);
   const dirtyRef = useRef(dirty);
@@ -43,6 +44,14 @@ function WritingEditor() {
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
+
+  // Once submitted, try to load published feedback (404 = not yet published).
+  useEffect(() => {
+    if (!submitted || !token) return;
+    api.getWritingFeedback(submissionId, token)
+      .then(setFeedback)
+      .catch(() => setFeedback(null));
+  }, [submitted, submissionId, token]);
 
   useEffect(() => {
     if (!token) { window.location.href = "/login"; return; }
@@ -84,7 +93,7 @@ function WritingEditor() {
       return true;
     } catch (e: any) {
       if (e.status === 401) { clearTokens(); window.location.href = "/login"; return false; }
-      setSaveError(e.detail ?? "Save failed");
+      setSaveError("Could not save your latest changes. Please check your connection and try again before submitting.");
       return false;
     } finally {
       setSaving(false);
@@ -102,11 +111,9 @@ function WritingEditor() {
   async function handleSubmit() {
     if (!token || submitted) return;
     setError("");
+    dirtyRef.current = true; // force save even if autosave already ran
     const saved = await doSave();
-    if (!saved) {
-      setError("Could not save before submitting — check your connection and try again.");
-      return;
-    }
+    if (!saved) return; // saveError is already displayed
     try {
       const updated = await api.submitWriting(submissionId, token);
       setSub(updated);
@@ -156,11 +163,32 @@ function WritingEditor() {
           <div className="bg-surface-secondary rounded p-4 whitespace-pre-wrap text-text-primary text-sm leading-relaxed">
             {content || "(No content)"}
           </div>
-          <div className="mt-4 bg-amber-400/5 border border-amber-400/20 rounded p-3">
-            <p className="text-amber-400 text-xs">
-              Writing feedback is educational guidance and does not represent official Selective School marking.
+
+          {feedback ? (
+            <div className="mt-6">
+              <h2 className="text-success font-semibold mb-2">Reviewer Feedback</h2>
+              <div className="bg-surface-secondary rounded p-4 whitespace-pre-wrap text-text-primary text-sm leading-relaxed">
+                {feedback.overall_comment}
+              </div>
+              {feedback.dimensions && feedback.dimensions.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {feedback.dimensions.map((d, i) => (
+                    <div key={i} className="text-sm">
+                      <span className="text-text-secondary font-medium">{d.name}: </span>
+                      <span className="text-text-primary">{d.comment}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 bg-amber-400/5 border border-amber-400/20 rounded p-3">
+                <p className="text-amber-400 text-xs">{feedback.disclaimer}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-text-tertiary text-sm">
+              Your response is awaiting review. Feedback will appear here once published.
             </p>
-          </div>
+          )}
           <div className="mt-4">
             <Link href="/me/writing" className="text-interactive hover:underline text-sm">
               Back to Writing Tasks

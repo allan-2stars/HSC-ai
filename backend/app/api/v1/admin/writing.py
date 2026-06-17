@@ -6,11 +6,12 @@ from app.core.deps import get_current_admin_profile
 from app.models.user import AdminProfile
 from app.models.writing import WritingTaskStatus
 from app.schemas.writing_schema import (
+    WritingFeedbackCreate,
     WritingSubmissionListItem,
     WritingTaskCreate,
     WritingTaskResponse,
 )
-from app.services import writing_service
+from app.services import writing_review_service, writing_service
 
 router = APIRouter(prefix="/admin/writing", tags=["admin-writing"])
 
@@ -84,6 +85,72 @@ async def list_all_submissions(
 ):
     return await writing_service.list_all_submissions(
         db, task_id=task_id, status_str=status
+    )
+
+
+# ── Human review workflow (M5.1) ────────────────────────────────────────────
+
+
+@router.get("/reviews")
+async def list_reviews(
+    status: str | None = None,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_review_service.list_reviews(db, status_str=status)
+
+
+@router.get("/reviews/{review_id}")
+async def get_review(
+    review_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_review_service.get_review_detail(
+        review_id, actor_user_id=admin_profile.user_id, db=db
+    )
+
+
+@router.post("/reviews/{review_id}/assign")
+async def assign_review(
+    review_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    # Self-assignment for V1 (reviewer balancing is out of scope).
+    return await writing_review_service.assign_review(
+        review_id,
+        reviewer_admin_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        db=db,
+    )
+
+
+@router.post("/reviews/{review_id}/feedback")
+async def add_feedback(
+    review_id: str,
+    body: WritingFeedbackCreate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_review_service.add_feedback(
+        review_id,
+        overall_comment=body.overall_comment,
+        dimensions=body.dimensions,
+        admin_profile_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        db=db,
+    )
+
+
+@router.post("/reviews/{review_id}/publish")
+async def publish_review(
+    review_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_review_service.publish_review(
+        review_id, actor_user_id=admin_profile.user_id, db=db
     )
 
 

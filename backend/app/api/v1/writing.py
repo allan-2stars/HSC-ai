@@ -8,7 +8,7 @@ from app.schemas.writing_schema import (
     WritingSubmissionResponse,
     WritingSubmissionSave,
 )
-from app.services import writing_service
+from app.services import writing_review_service, writing_service
 from app.services.family_service import get_student_profile
 
 router = APIRouter(prefix="/writing", tags=["writing"])
@@ -61,7 +61,9 @@ async def submit_writing(
     db: AsyncSession = Depends(get_db),
 ):
     profile = await get_student_profile(student.id, db)
-    sub = await writing_service.submit_submission(submission_id, profile.id, db)
+    sub = await writing_service.submit_submission(
+        submission_id, profile.id, db, student_user_id=student.id
+    )
     return _sub_to_response(sub)
 
 
@@ -83,6 +85,18 @@ async def list_my_submissions(
 ):
     profile = await get_student_profile(student.id, db)
     return await writing_service.list_student_submissions(profile.id, db)
+
+
+@router.get("/submissions/{submission_id}/feedback")
+async def get_submission_feedback(
+    submission_id: str,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    # Ownership check first (403 if not the student's own submission).
+    await writing_service.get_student_submission(submission_id, profile.id, db)
+    return await writing_review_service.get_published_feedback_for_submission(submission_id, db)
 
 
 def _sub_to_response(sub) -> dict:

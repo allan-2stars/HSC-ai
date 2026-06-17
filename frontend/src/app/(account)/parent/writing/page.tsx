@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type StudentResponse, type WritingSubmissionListItem } from "@/lib/api";
+import { api, type StudentResponse, type WritingSubmissionListItem, type WritingFeedbackView } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -67,20 +67,7 @@ function ParentWriting() {
                 ) : (
                   <div className="space-y-2">
                     {subs.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between text-sm">
-                        <span className="text-text-secondary">{s.task_title}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-text-tertiary text-xs">{s.word_count} words</span>
-                          <span className={`text-xs px-2 py-0.5 rounded ${
-                            s.status === "submitted" ? "bg-success/10 text-success" : "bg-amber-400/10 text-amber-400"
-                          }`}>{s.status}</span>
-                          {s.submitted_at && (
-                            <span className="text-text-tertiary text-xs">
-                              {new Date(s.submitted_at).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      <ParentSubmissionRow key={s.id} studentId={student.id} submission={s} token={token!} />
                     ))}
                   </div>
                 )}
@@ -93,6 +80,71 @@ function ParentWriting() {
       <div className="mt-8">
         <Link href="/me" className="text-interactive hover:underline text-sm">Account</Link>
       </div>
+    </div>
+  );
+}
+
+function ParentSubmissionRow({
+  studentId,
+  submission,
+  token,
+}: {
+  studentId: string;
+  submission: WritingSubmissionListItem;
+  token: string;
+}) {
+  const [feedback, setFeedback] = useState<WritingFeedbackView | null>(null);
+  const [open, setOpen] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  async function toggle() {
+    if (!open && !checked) {
+      try {
+        setFeedback(await api.getStudentWritingFeedback(studentId, submission.id, token));
+      } catch {
+        setFeedback(null);
+      } finally {
+        setChecked(true);
+      }
+    }
+    setOpen((o) => !o);
+  }
+
+  return (
+    <div className="text-sm border-b border-border-subtle/40 pb-2">
+      <div className="flex items-center justify-between">
+        <span className="text-text-secondary">{submission.task_title}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-text-tertiary text-xs">{submission.word_count} words</span>
+          <span className={`text-xs px-2 py-0.5 rounded ${
+            submission.status === "submitted" ? "bg-success/10 text-success" : "bg-amber-400/10 text-amber-400"
+          }`}>{submission.status}</span>
+          {submission.submitted_at && (
+            <span className="text-text-tertiary text-xs">
+              {new Date(submission.submitted_at).toLocaleDateString()}
+            </span>
+          )}
+          {submission.status === "submitted" && (
+            <button onClick={toggle} className="text-interactive hover:underline text-xs">
+              {open ? "Hide feedback" : "Feedback"}
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-2">
+          {feedback ? (
+            <div className="bg-surface-secondary rounded p-3">
+              <p className="whitespace-pre-wrap text-text-primary text-sm leading-relaxed">
+                {feedback.overall_comment}
+              </p>
+              <p className="text-amber-400 text-xs mt-2">{feedback.disclaimer}</p>
+            </div>
+          ) : (
+            <p className="text-text-tertiary text-xs">No published feedback yet.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
