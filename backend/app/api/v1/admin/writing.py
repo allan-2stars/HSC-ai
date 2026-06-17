@@ -241,10 +241,12 @@ async def update_dimension(
 async def delete_dimension(
     rubric_id: str,
     dimension_id: str,
-    _: AdminProfile = Depends(get_current_admin_profile),
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    await writing_rubric_service.delete_dimension(rubric_id, dimension_id, db)
+    await writing_rubric_service.delete_dimension(
+        rubric_id, dimension_id, admin_profile.user_id, db
+    )
 
 
 @router.post("/tasks/{task_id}/rubric")
@@ -267,7 +269,7 @@ async def score_review(
     db: AsyncSession = Depends(get_db),
 ):
     return await writing_rubric_service.upsert_scores(
-        review_id, body.scores, admin_profile.user_id, db
+        review_id, body.scores, admin_profile.id, admin_profile.user_id, db
     )
 
 

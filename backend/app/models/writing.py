@@ -222,5 +222,10 @@ class WritingReviewScore(Base, TimestampMixin):
     )
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Provenance — distinguishes human scoring from future AI-assisted scoring.
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("admin_profiles.id"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="human")
 
     dimension: Mapped["WritingRubricDimension"] = relationship()

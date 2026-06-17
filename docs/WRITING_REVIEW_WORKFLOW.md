@@ -151,7 +151,9 @@ FKs (null = global/platform rubric); `active` boolean.
 One row per `(review_id, dimension_id)` (unique). `rating` int with
 `CheckConstraint(rating BETWEEN 1 AND 5)`, `comment` text. Editable while the review
 is not published; rejected (422) once published — a future reopen/version workflow is
-out of scope.
+out of scope. Provenance: `created_by_admin_id` (nullable FK → `admin_profiles`) and
+`source` (varchar, default `"human"`) — set on every write, reserved for future
+AI-assisted scoring.
 
 ### `writing_tasks.rubric_id`
 Nullable FK assigning a rubric to a task.
@@ -181,7 +183,7 @@ gate unchanged.
 | POST | `/api/v1/admin/writing/rubrics/{id}/dimensions` | Add dimension |
 | PATCH | `/api/v1/admin/writing/rubrics/{id}/dimensions/{dim_id}` | Edit dimension |
 | DELETE | `/api/v1/admin/writing/rubrics/{id}/dimensions/{dim_id}` | Delete (422 if it has scores) |
-| POST | `/api/v1/admin/writing/tasks/{task_id}/rubric` | Assign/clear rubric (`{rubric_id}` or null) |
+| POST | `/api/v1/admin/writing/tasks/{task_id}/rubric` | Assign/clear rubric (`{rubric_id}` or null) — see assignment policy below |
 | POST | `/api/v1/admin/writing/reviews/{id}/scores` | Upsert scores (`{scores:[{dimension_id,rating,comment}]}`) |
 
 **Student / Parent** (published only, mirror the feedback endpoints):
@@ -193,14 +195,24 @@ gate unchanged.
 Both return `404` if unpublished/no rubric, `403` if not owned, and include the
 mandatory `disclaimer`.
 
+## Rubric assignment policy
+
+`POST .../tasks/{id}/rubric` enforces:
+- The rubric must exist, be **active**, and have **≥1 dimension** (else 422).
+- Once any submission under the task has rubric scores, the rubric **cannot be changed
+  or cleared** (422) — this protects assessment history. Re-assigning the *same*
+  rubric is a no-op and always allowed. Old scores are never auto-deleted.
+
 ## Auditing (additions)
 
 | action | actor | metadata |
 |---|---|---|
 | `writing_rubric.created` | admin | `{title}` |
-| `writing_rubric.updated` | admin | dimension change details |
+| `writing_rubric.updated` | admin | dimension add: `{dimension_added}`; update: `{dimension_updated, previous, new}`; delete: `{dimension_deleted, deleted}` |
 | `writing_task.rubric_assigned` | admin | `{rubric_id}` |
 | `writing_review.scored` | admin | `{dimension_count}` |
+
+Every rubric mutation — including dimension **update** and **delete** — is audited.
 
 ## Frontend (additions)
 
@@ -211,3 +223,15 @@ mandatory `disclaimer`.
 ## Out of scope (M5.2)
 
 AI feedback, AI scoring, disputes, grade/aggregate calculations, reviewer balancing.
+
+## Known limitations
+
+- **No rubric snapshotting.** The published rubric assessment renders the *live*
+  rubric/dimension text (`title`, `name`, `description`) joined to the historical
+  `rating`/`comment`. Editing a rubric or dimension after publish therefore changes
+  the labels a student/parent sees, while the scores stay as recorded. A future
+  milestone should snapshot the rubric version onto the review (or store a
+  `rubric_version` and immutable dimension copies) so published assessments are fully
+  immutable — alongside the disputes/reopen workflow.
+- Score immutability after publish is enforced at the service layer (not a DB trigger),
+  consistent with the agreed M5.2 design.

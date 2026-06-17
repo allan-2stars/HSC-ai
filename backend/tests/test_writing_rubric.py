@@ -570,6 +570,161 @@ def test_scoring_and_assignment_are_audited(client: TestClient):
 # ── DB-level rating constraint ───────────────────────────────────────────────
 
 
+# ── M5.2 hardening: dimension audit (H1) ─────────────────────────────────────
+
+
+def _audit_actions(target_id: str) -> list[str]:
+    async def _fetch():
+        async with _SessionFactory() as session:
+            result = await session.execute(
+                select(AuditLog.action).where(AuditLog.target_id == target_id)
+            )
+            return [r[0] for r in result.all()]
+    return _run(_fetch())
+
+
+def _audit_entries(target_id: str, action: str) -> list:
+    async def _fetch():
+        async with _SessionFactory() as session:
+            result = await session.execute(
+                select(AuditLog).where(AuditLog.target_id == target_id, AuditLog.action == action)
+            )
+            return list(result.scalars().all())
+    return _run(_fetch())
+
+
+def test_dimension_update_is_audited(client: TestClient):
+    admin_tokens = create_admin_and_login(client)
+    rubric = _create_rubric(client, admin_tokens, dimensions=DEFAULT_DIMENSIONS)
+    dim_id = rubric["dimensions"][0]["id"]
+    client.patch(
+        f"/api/v1/admin/writing/rubrics/{rubric['id']}/dimensions/{dim_id}",
+        json={"name": "Ideas & Content"},
+        headers=auth_headers(admin_tokens),
+    )
+    entries = _audit_entries(rubric["id"], "writing_rubric.updated")
+    dim_updates = [e for e in entries if (e.metadata_ or {}).get("dimension_updated") == dim_id]
+    assert dim_updates, "expected an audit entry for the dimension update"
+    meta = dim_updates[0].metadata_
+    assert meta["previous"]["name"] == "Ideas"
+    assert meta["new"]["name"] == "Ideas & Content"
+
+
+def test_dimension_delete_is_audited(client: TestClient):
+    admin_tokens = create_admin_and_login(client)
+    rubric = _create_rubric(client, admin_tokens, dimensions=DEFAULT_DIMENSIONS)
+    dim_id = rubric["dimensions"][1]["id"]
+    resp = client.delete(
+        f"/api/v1/admin/writing/rubrics/{rubric['id']}/dimensions/{dim_id}",
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 204
+    entries = _audit_entries(rubric["id"], "writing_rubric.updated")
+    deletes = [e for e in entries if (e.metadata_ or {}).get("dimension_deleted") == dim_id]
+    assert deletes, "expected an audit entry for the dimension delete"
+    assert deletes[0].metadata_["deleted"]["name"] == "Structure"
+
+
+# ── M5.2 hardening: reassignment policy (M2) ─────────────────────────────────
+
+
+def test_cannot_reassign_rubric_when_scores_exist(client: TestClient):
+    admin_tokens, sid, eid, rubric, task_id = _setup_task_with_rubric(client)
+    other = _create_rubric(client, admin_tokens, dimensions=DEFAULT_DIMENSIONS, title="Other")
+    student_tokens = create_student_and_login(client)
+    submission_id = _submit(client, task_id, student_tokens)
+    review = _review_for_submission(client, admin_tokens, submission_id)
+    _score(client, admin_tokens, review["id"], [{"dimension_id": rubric["dimensions"][0]["id"], "rating": 3, "comment": "x"}])
+
+    resp = client.post(
+        f"/api/v1/admin/writing/tasks/{task_id}/rubric",
+        json={"rubric_id": other["id"]},
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 422
+
+
+def test_cannot_clear_rubric_when_scores_exist(client: TestClient):
+    admin_tokens, sid, eid, rubric, task_id = _setup_task_with_rubric(client)
+    student_tokens = create_student_and_login(client)
+    submission_id = _submit(client, task_id, student_tokens)
+    review = _review_for_submission(client, admin_tokens, submission_id)
+    _score(client, admin_tokens, review["id"], [{"dimension_id": rubric["dimensions"][0]["id"], "rating": 3, "comment": "x"}])
+
+    resp = client.post(
+        f"/api/v1/admin/writing/tasks/{task_id}/rubric",
+        json={"rubric_id": None},
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 422
+
+
+def test_reassign_same_rubric_is_noop_even_with_scores(client: TestClient):
+    admin_tokens, sid, eid, rubric, task_id = _setup_task_with_rubric(client)
+    student_tokens = create_student_and_login(client)
+    submission_id = _submit(client, task_id, student_tokens)
+    review = _review_for_submission(client, admin_tokens, submission_id)
+    _score(client, admin_tokens, review["id"], [{"dimension_id": rubric["dimensions"][0]["id"], "rating": 3, "comment": "x"}])
+
+    resp = client.post(
+        f"/api/v1/admin/writing/tasks/{task_id}/rubric",
+        json={"rubric_id": rubric["id"]},
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 200
+
+
+def test_cannot_assign_inactive_rubric(client: TestClient):
+    admin_tokens = create_admin_and_login(client)
+    sid, eid = _make_taxonomy(client, admin_tokens)
+    rubric = _create_rubric(client, admin_tokens, dimensions=DEFAULT_DIMENSIONS, active=False)
+    task_id = _create_task(client, admin_tokens, sid, eid)
+    resp = client.post(
+        f"/api/v1/admin/writing/tasks/{task_id}/rubric",
+        json={"rubric_id": rubric["id"]},
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 422
+
+
+def test_cannot_assign_rubric_with_no_dimensions(client: TestClient):
+    admin_tokens = create_admin_and_login(client)
+    sid, eid = _make_taxonomy(client, admin_tokens)
+    rubric = _create_rubric(client, admin_tokens, dimensions=[])
+    task_id = _create_task(client, admin_tokens, sid, eid)
+    resp = client.post(
+        f"/api/v1/admin/writing/tasks/{task_id}/rubric",
+        json={"rubric_id": rubric["id"]},
+        headers=auth_headers(admin_tokens),
+    )
+    assert resp.status_code == 422
+
+
+# ── M5.2 hardening: score provenance (M3) ────────────────────────────────────
+
+
+def test_score_records_provenance(client: TestClient):
+    admin_tokens, sid, eid, rubric, task_id = _setup_task_with_rubric(client)
+    student_tokens = create_student_and_login(client)
+    submission_id = _submit(client, task_id, student_tokens)
+    review = _review_for_submission(client, admin_tokens, submission_id)
+    _score(client, admin_tokens, review["id"], [{"dimension_id": rubric["dimensions"][0]["id"], "rating": 4, "comment": "Good."}])
+
+    from app.models.writing import WritingReviewScore
+
+    async def _fetch():
+        async with _SessionFactory() as session:
+            result = await session.execute(
+                select(WritingReviewScore).where(WritingReviewScore.review_id == review["id"])
+            )
+            return list(result.scalars().all())
+
+    rows = _run(_fetch())
+    assert rows
+    assert rows[0].source == "human"
+    assert rows[0].created_by_admin_id is not None
+
+
 def test_rating_check_constraint_at_db_level(client: TestClient):
     """Direct insert of an out-of-range rating must be rejected by the DB CheckConstraint."""
     admin_tokens, sid, eid, rubric, task_id = _setup_task_with_rubric(client)

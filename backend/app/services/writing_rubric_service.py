@@ -217,16 +217,31 @@ async def update_dimension(
     dimension = result.scalar_one_or_none()
     if not dimension:
         raise HTTPException(status_code=404, detail="Dimension not found")
+    previous = _dimension_to_dict(dimension)
     for key, value in fields.items():
         if value is not None:
             setattr(dimension, key, value)
+    await audit_service.log_action(
+        db,
+        action="writing_rubric.updated",
+        actor_user_id=actor_user_id,
+        actor_role="admin",
+        target_type="writing_rubric",
+        target_id=rubric_id,
+        metadata={
+            "dimension_updated": dimension_id,
+            "rubric_id": rubric_id,
+            "previous": {"name": previous["name"], "description": previous["description"], "display_order": previous["display_order"]},
+            "new": {"name": dimension.name, "description": dimension.description, "display_order": dimension.display_order},
+        },
+    )
     await db.commit()
     await db.refresh(dimension)
     return _dimension_to_dict(dimension)
 
 
 async def delete_dimension(
-    rubric_id: str, dimension_id: str, db: AsyncSession
+    rubric_id: str, dimension_id: str, actor_user_id: str | None, db: AsyncSession
 ) -> None:
     result = await db.execute(
         select(WritingRubricDimension).where(
@@ -245,6 +260,20 @@ async def delete_dimension(
         raise HTTPException(
             status_code=422, detail="Cannot delete a dimension that already has review scores"
         )
+    deleted = _dimension_to_dict(dimension)
+    await audit_service.log_action(
+        db,
+        action="writing_rubric.updated",
+        actor_user_id=actor_user_id,
+        actor_role="admin",
+        target_type="writing_rubric",
+        target_id=rubric_id,
+        metadata={
+            "dimension_deleted": dimension_id,
+            "rubric_id": rubric_id,
+            "deleted": {"name": deleted["name"], "display_order": deleted["display_order"]},
+        },
+    )
     await db.delete(dimension)
     await db.commit()
 
@@ -260,8 +289,36 @@ async def assign_rubric_to_task(
     )).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Writing task not found")
+
+    changing = rubric_id != task.rubric_id
+
+    # Strict policy: never change/clear the rubric once any submission under this
+    # task has rubric scores — that would orphan assessment history. (Re-assigning
+    # the same rubric is a no-op and always allowed.)
+    if changing:
+        scored = (await db.execute(
+            select(WritingReviewScore.id)
+            .join(WritingReview, WritingReview.id == WritingReviewScore.review_id)
+            .join(WritingSubmission, WritingSubmission.id == WritingReview.submission_id)
+            .where(WritingSubmission.writing_task_id == task_id)
+            .limit(1)
+        )).scalar_one_or_none()
+        if scored:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot change the rubric: submissions under this task already have rubric scores",
+            )
+
     if rubric_id is not None:
-        await _get_rubric(rubric_id, db)  # validate existence
+        rubric = await _get_rubric(rubric_id, db)  # validate existence
+        if not rubric.active:
+            raise HTTPException(status_code=422, detail="Cannot assign an inactive rubric")
+        dimension_count = len(await _dimensions_for_rubric(rubric_id, db))
+        if dimension_count == 0:
+            raise HTTPException(
+                status_code=422, detail="Cannot assign a rubric with no dimensions"
+            )
+
     task.rubric_id = rubric_id
     await audit_service.log_action(
         db,
@@ -280,7 +337,7 @@ async def assign_rubric_to_task(
 
 
 async def upsert_scores(
-    review_id: str, scores: list, actor_user_id: str | None, db: AsyncSession
+    review_id: str, scores: list, admin_profile_id: str, actor_user_id: str | None, db: AsyncSession
 ) -> dict:
     review = (await db.execute(
         select(WritingReview).where(WritingReview.id == review_id)
@@ -312,12 +369,16 @@ async def upsert_scores(
         if item.dimension_id in existing:
             existing[item.dimension_id].rating = item.rating
             existing[item.dimension_id].comment = item.comment
+            existing[item.dimension_id].created_by_admin_id = admin_profile_id
+            existing[item.dimension_id].source = "human"
         else:
             db.add(WritingReviewScore(
                 review_id=review_id,
                 dimension_id=item.dimension_id,
                 rating=item.rating,
                 comment=item.comment,
+                created_by_admin_id=admin_profile_id,
+                source="human",
             ))
 
     await audit_service.log_action(
