@@ -49,6 +49,9 @@ function AdminWriting() {
           <p className="text-text-secondary text-sm">Admin · Manage writing tasks</p>
         </div>
         <div className="flex gap-3">
+          <Link href="/admin/writing/rubrics" className="text-sm text-interactive hover:underline">
+            Rubrics →
+          </Link>
           <Link href="/admin/writing/reviews" className="text-sm text-interactive hover:underline">
             Review Queue →
           </Link>

@@ -124,7 +124,90 @@ Recorded in `AuditLog` (target_type `writing_review`):
 - **Student** — published feedback rendered on the submission page with disclaimer.
 - **Parent** — published feedback expandable per submission on `/parent/writing`.
 
-## Out of scope (deferred)
+## Out of scope (deferred for M5.1)
 
-AI feedback generation, disputes/appeals, rubric tables, numeric scoring/grading,
-reviewer workload balancing.
+AI feedback generation, disputes/appeals, numeric scoring/grading, reviewer
+workload balancing. (Rubrics added in M5.2 — see below.)
+
+---
+
+# Writing Rubrics (M5.2)
+
+Rubric-based assessment layered onto the human review workflow. Reviewers score a
+submission against a rubric's dimensions (rating 1–5 + comment per dimension). The
+rubric assessment is published and made visible under the same publish gate as the
+overall feedback.
+
+## Data model
+
+### `writing_rubrics`
+Reusable rubric template. `framework_id` / `subject_id` / `exam_type_id` are nullable
+FKs (null = global/platform rubric); `active` boolean.
+
+### `writing_rubric_dimensions`
+`rubric_id` (FK, cascade delete), `name`, `description` (nullable), `display_order`.
+
+### `writing_review_scores`
+One row per `(review_id, dimension_id)` (unique). `rating` int with
+`CheckConstraint(rating BETWEEN 1 AND 5)`, `comment` text. Editable while the review
+is not published; rejected (422) once published — a future reopen/version workflow is
+out of scope.
+
+### `writing_tasks.rubric_id`
+Nullable FK assigning a rubric to a task.
+
+## Rating scale
+
+`rating` is an integer 1–5, validated both at the API (`Field(ge=1, le=5)`) and the DB
+(CheckConstraint). Display labels (mapped in the UI): 1 Needs Work, 2 Developing,
+3 Satisfactory, 4 Strong, 5 Excellent.
+
+## Publish gate
+
+If the submission's task has an assigned rubric, publishing requires **every**
+dimension to have a rating **and** a non-empty comment (else 422), in addition to the
+M5.1 gate (status `reviewed` + overall feedback). Tasks with no rubric use the M5.1
+gate unchanged.
+
+## API
+
+**Admin** (`get_current_admin_profile`):
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/admin/writing/rubrics` | Create rubric (optional inline dimensions) |
+| GET | `/api/v1/admin/writing/rubrics` | List (`?active=`, `?framework_id=`) |
+| GET | `/api/v1/admin/writing/rubrics/{id}` | Detail with dimensions |
+| PATCH | `/api/v1/admin/writing/rubrics/{id}` | Edit rubric fields |
+| POST | `/api/v1/admin/writing/rubrics/{id}/dimensions` | Add dimension |
+| PATCH | `/api/v1/admin/writing/rubrics/{id}/dimensions/{dim_id}` | Edit dimension |
+| DELETE | `/api/v1/admin/writing/rubrics/{id}/dimensions/{dim_id}` | Delete (422 if it has scores) |
+| POST | `/api/v1/admin/writing/tasks/{task_id}/rubric` | Assign/clear rubric (`{rubric_id}` or null) |
+| POST | `/api/v1/admin/writing/reviews/{id}/scores` | Upsert scores (`{scores:[{dimension_id,rating,comment}]}`) |
+
+**Student / Parent** (published only, mirror the feedback endpoints):
+| Method | Path |
+|---|---|
+| GET | `/api/v1/writing/submissions/{id}/rubric` |
+| GET | `/api/v1/parents/students/{sid}/writing/{sub_id}/rubric` |
+
+Both return `404` if unpublished/no rubric, `403` if not owned, and include the
+mandatory `disclaimer`.
+
+## Auditing (additions)
+
+| action | actor | metadata |
+|---|---|---|
+| `writing_rubric.created` | admin | `{title}` |
+| `writing_rubric.updated` | admin | dimension change details |
+| `writing_task.rubric_assigned` | admin | `{rubric_id}` |
+| `writing_review.scored` | admin | `{dimension_count}` |
+
+## Frontend (additions)
+
+- **Admin rubrics** — `/admin/writing/rubrics`: list + create rubric with dimensions.
+- **Admin review detail** — rubric scoring (rating select + comment per dimension).
+- **Student / Parent** — published rubric assessment rendered alongside feedback.
+
+## Out of scope (M5.2)
+
+AI feedback, AI scoring, disputes, grade/aggregate calculations, reviewer balancing.

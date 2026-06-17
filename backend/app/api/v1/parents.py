@@ -10,7 +10,12 @@ from app.schemas.user import (
     StudentResponse,
     StudentUpdateRequest,
 )
-from app.services import family_service, writing_review_service, writing_service
+from app.services import (
+    family_service,
+    writing_review_service,
+    writing_rubric_service,
+    writing_service,
+)
 
 router = APIRouter(tags=["parents"])
 
@@ -129,3 +134,18 @@ async def get_student_writing_feedback(
     # Verify the submission belongs to this student (403 if not).
     await writing_service.get_student_submission(submission_id, student_id, db)
     return await writing_review_service.get_published_feedback_for_submission(submission_id, db)
+
+
+@router.get("/parents/students/{student_id}/writing/{submission_id}/rubric")
+async def get_student_writing_rubric(
+    student_id: str,
+    submission_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    await writing_service.get_student_submission(submission_id, student_id, db)
+    return await writing_rubric_service.get_published_rubric_for_submission(submission_id, db)

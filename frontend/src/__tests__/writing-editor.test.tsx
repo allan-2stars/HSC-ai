@@ -15,6 +15,7 @@ vi.mock("@/lib/api", () => ({
     saveWriting: vi.fn(),
     submitWriting: vi.fn(),
     getWritingFeedback: vi.fn(() => Promise.reject({ status: 404 })),
+    getSubmissionRubric: vi.fn(() => Promise.reject({ status: 404 })),
   },
 }));
 
@@ -52,6 +53,7 @@ describe("WritingEditor — submit-after-save-failure guard", () => {
     (auth.getAccessToken as any).mockReturnValue("test-token");
     (api.getWritingSubmission as any).mockResolvedValue(draftSubmission);
     (api.getWritingFeedback as any).mockRejectedValue({ status: 404 });
+    (api.getSubmissionRubric as any).mockRejectedValue({ status: 404 });
   });
 
   it("blocks submit and shows a visible error when the final save fails", async () => {

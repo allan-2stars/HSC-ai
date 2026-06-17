@@ -717,6 +717,46 @@ export const api = {
   // Parent
   getStudentWritingFeedback: (studentId: string, submissionId: string, token: string) =>
     request<WritingFeedbackView>(`/v1/parents/students/${studentId}/writing/${submissionId}/feedback`, {}, token),
+
+  // ── Rubrics (M5.2) ────────────────────────────────────────────
+  // Admin
+  listRubrics: (token: string, active?: boolean) =>
+    request<WritingRubric[]>(`/v1/admin/writing/rubrics${active !== undefined ? `?active=${active}` : ""}`, {}, token),
+
+  getRubric: (rubricId: string, token: string) =>
+    request<WritingRubric>(`/v1/admin/writing/rubrics/${rubricId}`, {}, token),
+
+  createRubric: (body: RubricCreateBody, token: string) =>
+    request<WritingRubric>(`/v1/admin/writing/rubrics`, { method: "POST", body: JSON.stringify(body) }, token),
+
+  updateRubric: (rubricId: string, body: Partial<RubricCreateBody>, token: string) =>
+    request<WritingRubric>(`/v1/admin/writing/rubrics/${rubricId}`, { method: "PATCH", body: JSON.stringify(body) }, token),
+
+  addRubricDimension: (rubricId: string, body: { name: string; description?: string | null; display_order: number }, token: string) =>
+    request<WritingRubricDimension>(`/v1/admin/writing/rubrics/${rubricId}/dimensions`, { method: "POST", body: JSON.stringify(body) }, token),
+
+  deleteRubricDimension: (rubricId: string, dimensionId: string, token: string) =>
+    request<void>(`/v1/admin/writing/rubrics/${rubricId}/dimensions/${dimensionId}`, { method: "DELETE" }, token),
+
+  assignRubricToTask: (taskId: string, rubricId: string | null, token: string) =>
+    request<{ task_id: string; rubric_id: string | null }>(`/v1/admin/writing/tasks/${taskId}/rubric`, {
+      method: "POST",
+      body: JSON.stringify({ rubric_id: rubricId }),
+    }, token),
+
+  scoreReview: (reviewId: string, scores: ReviewScoreInput[], token: string) =>
+    request<{ review_id: string; scores: ReviewScoreInput[] }>(`/v1/admin/writing/reviews/${reviewId}/scores`, {
+      method: "POST",
+      body: JSON.stringify({ scores }),
+    }, token),
+
+  // Student
+  getSubmissionRubric: (submissionId: string, token: string) =>
+    request<WritingRubricView>(`/v1/writing/submissions/${submissionId}/rubric`, {}, token),
+
+  // Parent
+  getStudentSubmissionRubric: (studentId: string, submissionId: string, token: string) =>
+    request<WritingRubricView>(`/v1/parents/students/${studentId}/writing/${submissionId}/rubric`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -885,6 +925,66 @@ export interface WritingReviewDetail extends WritingReviewItem {
     submitted_at: string | null;
   };
   feedback: WritingFeedback | null;
+  rubric: WritingReviewRubricBlock | null;
+}
+
+// ── Rubrics (M5.2) ─────────────────────────────────────────────
+
+export interface WritingRubricDimension {
+  id: string;
+  name: string;
+  description: string | null;
+  display_order: number;
+}
+
+export interface WritingRubric {
+  id: string;
+  title: string;
+  framework_id: string | null;
+  subject_id: string | null;
+  exam_type_id: string | null;
+  active: boolean;
+  dimensions: WritingRubricDimension[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface RubricCreateBody {
+  title: string;
+  framework_id?: string | null;
+  subject_id?: string | null;
+  exam_type_id?: string | null;
+  active?: boolean;
+  dimensions?: { name: string; description?: string | null; display_order: number }[];
+}
+
+export interface ReviewScoreInput {
+  dimension_id: string;
+  rating: number;
+  comment: string;
+}
+
+export interface RubricScore {
+  dimension_id: string;
+  name: string;
+  description: string | null;
+  display_order: number;
+  rating: number | null;
+  comment: string | null;
+}
+
+export interface WritingReviewRubricBlock {
+  rubric_id: string;
+  title: string;
+  scores: RubricScore[];
+}
+
+export interface WritingRubricView {
+  submission_id: string;
+  rubric_title: string;
+  framework_id: string | null;
+  scores: RubricScore[];
+  disclaimer: string;
 }
 
 export interface WritingFeedbackBody {

@@ -3,7 +3,15 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingSubmissionResponse, type WritingFeedbackView } from "@/lib/api";
+import { api, type WritingSubmissionResponse, type WritingFeedbackView, type WritingRubricView } from "@/lib/api";
+
+const RATING_LABELS: Record<number, string> = {
+  1: "Needs Work",
+  2: "Developing",
+  3: "Satisfactory",
+  4: "Strong",
+  5: "Excellent",
+};
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -30,6 +38,7 @@ function WritingEditor() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [feedback, setFeedback] = useState<WritingFeedbackView | null>(null);
+  const [rubric, setRubric] = useState<WritingRubricView | null>(null);
   const [dirty, setDirty] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentRef = useRef(content);
@@ -45,12 +54,15 @@ function WritingEditor() {
     dirtyRef.current = dirty;
   }, [dirty]);
 
-  // Once submitted, try to load published feedback (404 = not yet published).
+  // Once submitted, try to load published feedback + rubric (404 = not yet published).
   useEffect(() => {
     if (!submitted || !token) return;
     api.getWritingFeedback(submissionId, token)
       .then(setFeedback)
       .catch(() => setFeedback(null));
+    api.getSubmissionRubric(submissionId, token)
+      .then(setRubric)
+      .catch(() => setRubric(null));
   }, [submitted, submissionId, token]);
 
   useEffect(() => {
@@ -188,6 +200,26 @@ function WritingEditor() {
             <p className="mt-4 text-text-tertiary text-sm">
               Your response is awaiting review. Feedback will appear here once published.
             </p>
+          )}
+
+          {rubric && (
+            <div className="mt-6">
+              <h2 className="text-success font-semibold mb-2">Rubric Assessment</h2>
+              <p className="text-text-tertiary text-xs mb-3">{rubric.rubric_title}</p>
+              <div className="space-y-3">
+                {rubric.scores.map((s) => (
+                  <div key={s.dimension_id} className="bg-surface-secondary rounded p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-text-primary text-sm font-medium">{s.name}</span>
+                      <span className="text-success text-sm">
+                        {s.rating}/5 {s.rating ? `— ${RATING_LABELS[s.rating]}` : ""}
+                      </span>
+                    </div>
+                    {s.comment && <p className="text-text-primary text-sm whitespace-pre-wrap">{s.comment}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
           <div className="mt-4">
             <Link href="/me/writing" className="text-interactive hover:underline text-sm">

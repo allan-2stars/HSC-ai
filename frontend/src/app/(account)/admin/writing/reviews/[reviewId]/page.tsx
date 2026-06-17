@@ -3,9 +3,17 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingReviewDetail } from "@/lib/api";
+import { api, type WritingReviewDetail, type ReviewScoreInput } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
+
+const RATING_LABELS: Record<number, string> = {
+  1: "Needs Work",
+  2: "Developing",
+  3: "Satisfactory",
+  4: "Strong",
+  5: "Excellent",
+};
 
 export default function AdminWritingReviewDetailPage() {
   return (
@@ -20,6 +28,7 @@ function ReviewDetail() {
   const reviewId = params.reviewId as string;
   const [review, setReview] = useState<WritingReviewDetail | null>(null);
   const [comment, setComment] = useState("");
+  const [scores, setScores] = useState<Record<string, { rating: number; comment: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,6 +41,13 @@ function ReviewDetail() {
       .then((r) => {
         setReview(r);
         if (r.feedback) setComment(r.feedback.overall_comment);
+        if (r.rubric) {
+          const initial: Record<string, { rating: number; comment: string }> = {};
+          for (const s of r.rubric.scores) {
+            initial[s.dimension_id] = { rating: s.rating ?? 3, comment: s.comment ?? "" };
+          }
+          setScores(initial);
+        }
       })
       .catch((e) => {
         if (e.status === 401) { clearTokens(); window.location.href = "/login"; return; }
@@ -55,6 +71,25 @@ function ReviewDetail() {
       setReview(updated);
     } catch (e: any) {
       setError(e.detail ?? "Failed to save feedback");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveScores() {
+    if (!token || !review?.rubric) return;
+    setBusy(true);
+    setError("");
+    try {
+      const payload: ReviewScoreInput[] = review.rubric.scores.map((s) => ({
+        dimension_id: s.dimension_id,
+        rating: scores[s.dimension_id]?.rating ?? 3,
+        comment: scores[s.dimension_id]?.comment ?? "",
+      }));
+      await api.scoreReview(reviewId, payload, token);
+      load();
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to save scores");
     } finally {
       setBusy(false);
     }
@@ -102,6 +137,77 @@ function ReviewDetail() {
           {review.submission.content || "(No content)"}
         </div>
       </div>
+
+      {review.rubric && (
+        <div className="bg-surface border border-border-subtle rounded-lg p-4 mb-6">
+          <h2 className="text-sm font-medium text-text-secondary mb-3">
+            Rubric · {review.rubric.title}
+          </h2>
+          <div className="space-y-4">
+            {review.rubric.scores.map((dim) => (
+              <div key={dim.dimension_id} className="border-b border-border-subtle/40 pb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-text-primary text-sm font-medium">{dim.name}</span>
+                  {!published && (
+                    <select
+                      aria-label={`Rating for ${dim.name}`}
+                      className="bg-surface-secondary border border-border-subtle rounded p-1 text-sm text-text-primary"
+                      value={scores[dim.dimension_id]?.rating ?? 3}
+                      onChange={(e) =>
+                        setScores((prev) => ({
+                          ...prev,
+                          [dim.dimension_id]: {
+                            rating: parseInt(e.target.value),
+                            comment: prev[dim.dimension_id]?.comment ?? "",
+                          },
+                        }))
+                      }
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>{n} — {RATING_LABELS[n]}</option>
+                      ))}
+                    </select>
+                  )}
+                  {published && (
+                    <span className="text-success text-sm">
+                      {dim.rating} — {dim.rating ? RATING_LABELS[dim.rating] : ""}
+                    </span>
+                  )}
+                </div>
+                {dim.description && <p className="text-text-tertiary text-xs mb-1">{dim.description}</p>}
+                {published ? (
+                  <p className="text-text-primary text-sm whitespace-pre-wrap">{dim.comment}</p>
+                ) : (
+                  <textarea
+                    aria-label={`Comment for ${dim.name}`}
+                    className="w-full h-16 bg-surface-secondary border border-border-subtle rounded p-2 text-text-primary text-sm resize-y focus:outline-none focus:border-interactive"
+                    value={scores[dim.dimension_id]?.comment ?? ""}
+                    onChange={(e) =>
+                      setScores((prev) => ({
+                        ...prev,
+                        [dim.dimension_id]: {
+                          rating: prev[dim.dimension_id]?.rating ?? 3,
+                          comment: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder={`Comment on ${dim.name}...`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          {!published && (
+            <button
+              onClick={saveScores}
+              disabled={busy}
+              className="mt-3 text-sm bg-interactive text-white px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+            >
+              Save Scores
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="bg-surface border border-border-subtle rounded-lg p-4 mb-6">
         <h2 className="text-sm font-medium text-text-secondary mb-2">

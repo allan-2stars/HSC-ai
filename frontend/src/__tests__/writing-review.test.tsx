@@ -14,6 +14,7 @@ vi.mock("@/lib/api", () => ({
     getWritingReview: vi.fn(),
     addWritingFeedback: vi.fn(),
     publishWritingReview: vi.fn(),
+    scoreReview: vi.fn(),
   },
 }));
 
@@ -50,6 +51,7 @@ const reviewUnderReview = {
     submitted_at: "2026-06-17T00:00:00Z",
   },
   feedback: null,
+  rubric: null,
 };
 
 describe("Admin review detail — feedback authoring and publish gate", () => {

@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type StudentResponse, type WritingSubmissionListItem, type WritingFeedbackView } from "@/lib/api";
+import { api, type StudentResponse, type WritingSubmissionListItem, type WritingFeedbackView, type WritingRubricView } from "@/lib/api";
+
+const RATING_LABELS: Record<number, string> = {
+  1: "Needs Work",
+  2: "Developing",
+  3: "Satisfactory",
+  4: "Strong",
+  5: "Excellent",
+};
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -94,6 +102,7 @@ function ParentSubmissionRow({
   token: string;
 }) {
   const [feedback, setFeedback] = useState<WritingFeedbackView | null>(null);
+  const [rubric, setRubric] = useState<WritingRubricView | null>(null);
   const [open, setOpen] = useState(false);
   const [checked, setChecked] = useState(false);
 
@@ -103,9 +112,13 @@ function ParentSubmissionRow({
         setFeedback(await api.getStudentWritingFeedback(studentId, submission.id, token));
       } catch {
         setFeedback(null);
-      } finally {
-        setChecked(true);
       }
+      try {
+        setRubric(await api.getStudentSubmissionRubric(studentId, submission.id, token));
+      } catch {
+        setRubric(null);
+      }
+      setChecked(true);
     }
     setOpen((o) => !o);
   }
@@ -132,7 +145,7 @@ function ParentSubmissionRow({
         </div>
       </div>
       {open && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           {feedback ? (
             <div className="bg-surface-secondary rounded p-3">
               <p className="whitespace-pre-wrap text-text-primary text-sm leading-relaxed">
@@ -142,6 +155,24 @@ function ParentSubmissionRow({
             </div>
           ) : (
             <p className="text-text-tertiary text-xs">No published feedback yet.</p>
+          )}
+          {rubric && (
+            <div className="bg-surface-secondary rounded p-3">
+              <p className="text-text-secondary text-xs font-medium mb-2">Rubric · {rubric.rubric_title}</p>
+              <div className="space-y-2">
+                {rubric.scores.map((s) => (
+                  <div key={s.dimension_id}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-text-primary text-sm">{s.name}</span>
+                      <span className="text-success text-xs">
+                        {s.rating}/5 {s.rating ? `— ${RATING_LABELS[s.rating]}` : ""}
+                      </span>
+                    </div>
+                    {s.comment && <p className="text-text-tertiary text-xs whitespace-pre-wrap">{s.comment}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

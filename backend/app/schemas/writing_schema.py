@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WritingTaskCreate(BaseModel):
@@ -67,3 +67,49 @@ class AdminReviewNote(BaseModel):
 class WritingFeedbackCreate(BaseModel):
     overall_comment: str
     dimensions: list | None = None
+
+
+# ── Rubrics (M5.2) ──────────────────────────────────────────────────────────
+
+
+class RubricDimensionInput(BaseModel):
+    name: str
+    description: str | None = None
+    display_order: int = 0
+
+
+class RubricCreate(BaseModel):
+    title: str
+    framework_id: str | None = None
+    subject_id: str | None = None
+    exam_type_id: str | None = None
+    active: bool = True
+    dimensions: list[RubricDimensionInput] | None = None
+
+
+class RubricUpdate(BaseModel):
+    title: str | None = None
+    framework_id: str | None = None
+    subject_id: str | None = None
+    exam_type_id: str | None = None
+    active: bool | None = None
+
+
+class RubricDimensionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    display_order: int | None = None
+
+
+class RubricAssign(BaseModel):
+    rubric_id: str | None = None
+
+
+class ReviewScoreInput(BaseModel):
+    dimension_id: str
+    rating: int = Field(ge=1, le=5)
+    comment: str = ""
+
+
+class ReviewScoresCreate(BaseModel):
+    scores: list[ReviewScoreInput]

@@ -195,6 +195,8 @@ async def get_review_detail(
     submission, task_title, student_name = row
 
     fb = await _latest_feedback(review.id, db)
+    from app.services import writing_rubric_service
+    rubric_block = await writing_rubric_service.rubric_block_for_review(review, db)
     return {
         **_review_to_dict(review, fb.version if fb else None),
         "submission": {
@@ -206,6 +208,7 @@ async def get_review_detail(
             "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
         },
         "feedback": _feedback_to_dict(fb),
+        "rubric": rubric_block,
     }
 
 
@@ -304,6 +307,10 @@ async def publish_review(
     fb = await _latest_feedback(review.id, db)
     if fb is None:
         raise HTTPException(status_code=422, detail="Cannot publish without feedback")
+
+    # If the task has an assigned rubric, all dimensions must be fully scored.
+    from app.services import writing_rubric_service
+    await writing_rubric_service.assert_rubric_complete_for_publish(review, db)
 
     review.status = WritingReviewStatus.published
     review.published_at = datetime.now(tz=timezone.utc)

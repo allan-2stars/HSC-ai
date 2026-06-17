@@ -3,6 +3,8 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
@@ -61,10 +63,14 @@ class WritingTask(Base, TimestampMixin):
     created_by_admin_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("admin_profiles.id"), nullable=False
     )
+    rubric_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubrics.id"), nullable=True, index=True
+    )
 
     subject: Mapped["Subject"] = relationship()  # type: ignore[name-defined]
     exam_type: Mapped["ExamType"] = relationship()  # type: ignore[name-defined]
     created_by_admin: Mapped["AdminProfile"] = relationship()  # type: ignore[name-defined]
+    rubric: Mapped["WritingRubric"] = relationship()
 
 
 class WritingSubmission(Base, TimestampMixin):
@@ -151,3 +157,70 @@ class WritingFeedback(Base):
     )
 
     review: Mapped["WritingReview"] = relationship()
+
+
+# ── Rubrics (M5.2) ──────────────────────────────────────────────────────────
+
+
+class WritingRubric(Base, TimestampMixin):
+    """A reusable rubric template. Subject / exam_type / framework are optional
+    (null = a global/platform rubric)."""
+
+    __tablename__ = "writing_rubrics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    framework_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("curriculum_frameworks.id"), nullable=True, index=True
+    )
+    subject_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("subjects.id"), nullable=True, index=True
+    )
+    exam_type_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("exam_types.id"), nullable=True, index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+
+    dimensions: Mapped[list["WritingRubricDimension"]] = relationship(
+        back_populates="rubric",
+        order_by="WritingRubricDimension.display_order",
+        cascade="all, delete-orphan",
+    )
+
+
+class WritingRubricDimension(Base, TimestampMixin):
+    __tablename__ = "writing_rubric_dimensions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    rubric_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubrics.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    rubric: Mapped["WritingRubric"] = relationship(back_populates="dimensions")
+
+
+class WritingReviewScore(Base, TimestampMixin):
+    """A reviewer's rating + comment for one dimension of one review. Editable
+    until the review is published, then frozen at the service layer. One row per
+    (review, dimension)."""
+
+    __tablename__ = "writing_review_scores"
+    __table_args__ = (
+        UniqueConstraint("review_id", "dimension_id", name="uq_review_score_review_dimension"),
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_review_score_rating_range"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    review_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_reviews.id"), nullable=False, index=True
+    )
+    dimension_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubric_dimensions.id"), nullable=False, index=True
+    )
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    dimension: Mapped["WritingRubricDimension"] = relationship()

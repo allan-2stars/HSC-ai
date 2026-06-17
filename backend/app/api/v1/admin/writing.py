@@ -6,12 +6,18 @@ from app.core.deps import get_current_admin_profile
 from app.models.user import AdminProfile
 from app.models.writing import WritingTaskStatus
 from app.schemas.writing_schema import (
+    ReviewScoresCreate,
+    RubricAssign,
+    RubricCreate,
+    RubricDimensionInput,
+    RubricDimensionUpdate,
+    RubricUpdate,
     WritingFeedbackCreate,
     WritingSubmissionListItem,
     WritingTaskCreate,
     WritingTaskResponse,
 )
-from app.services import writing_review_service, writing_service
+from app.services import writing_review_service, writing_rubric_service, writing_service
 
 router = APIRouter(prefix="/admin/writing", tags=["admin-writing"])
 
@@ -151,6 +157,117 @@ async def publish_review(
 ):
     return await writing_review_service.publish_review(
         review_id, actor_user_id=admin_profile.user_id, db=db
+    )
+
+
+# ── Rubrics (M5.2) ──────────────────────────────────────────────────────────
+
+
+@router.post("/rubrics", status_code=201)
+async def create_rubric(
+    body: RubricCreate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.create_rubric(
+        db,
+        title=body.title,
+        framework_id=body.framework_id,
+        subject_id=body.subject_id,
+        exam_type_id=body.exam_type_id,
+        active=body.active,
+        dimensions=body.dimensions,
+        actor_user_id=admin_profile.user_id,
+    )
+
+
+@router.get("/rubrics")
+async def list_rubrics(
+    active: bool | None = None,
+    framework_id: str | None = None,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.list_rubrics(db, active=active, framework_id=framework_id)
+
+
+@router.get("/rubrics/{rubric_id}")
+async def get_rubric(
+    rubric_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.get_rubric(rubric_id, db)
+
+
+@router.patch("/rubrics/{rubric_id}")
+async def update_rubric(
+    rubric_id: str,
+    body: RubricUpdate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.update_rubric(
+        rubric_id, body.model_dump(exclude_unset=True), admin_profile.user_id, db
+    )
+
+
+@router.post("/rubrics/{rubric_id}/dimensions", status_code=201)
+async def add_dimension(
+    rubric_id: str,
+    body: RubricDimensionInput,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.add_dimension(
+        rubric_id, body.name, body.description, body.display_order, admin_profile.user_id, db
+    )
+
+
+@router.patch("/rubrics/{rubric_id}/dimensions/{dimension_id}")
+async def update_dimension(
+    rubric_id: str,
+    dimension_id: str,
+    body: RubricDimensionUpdate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.update_dimension(
+        rubric_id, dimension_id, body.model_dump(exclude_unset=True), admin_profile.user_id, db
+    )
+
+
+@router.delete("/rubrics/{rubric_id}/dimensions/{dimension_id}", status_code=204)
+async def delete_dimension(
+    rubric_id: str,
+    dimension_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    await writing_rubric_service.delete_dimension(rubric_id, dimension_id, db)
+
+
+@router.post("/tasks/{task_id}/rubric")
+async def assign_rubric(
+    task_id: str,
+    body: RubricAssign,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.assign_rubric_to_task(
+        task_id, body.rubric_id, admin_profile.user_id, db
+    )
+
+
+@router.post("/reviews/{review_id}/scores")
+async def score_review(
+    review_id: str,
+    body: ReviewScoresCreate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.upsert_scores(
+        review_id, body.scores, admin_profile.user_id, db
     )
 
 
