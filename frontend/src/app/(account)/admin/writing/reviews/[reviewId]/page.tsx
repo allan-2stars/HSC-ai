@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingReviewDetail, type ReviewScoreInput } from "@/lib/api";
+import { api, type WritingReviewDetail, type ReviewScoreInput, type WritingFeedbackDraft } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -29,9 +29,11 @@ function ReviewDetail() {
   const [review, setReview] = useState<WritingReviewDetail | null>(null);
   const [comment, setComment] = useState("");
   const [scores, setScores] = useState<Record<string, { rating: number; comment: string }>>({});
+  const [drafts, setDrafts] = useState<WritingFeedbackDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
 
   const token = getAccessToken();
 
@@ -56,11 +58,61 @@ function ReviewDetail() {
       .finally(() => setLoading(false));
   }
 
+  function loadDrafts() {
+    if (!token) return;
+    api.listAIDrafts(reviewId, token)
+      .then(setDrafts)
+      .catch(() => { /* drafts are optional; ignore load errors */ });
+  }
+
   useEffect(() => {
     if (!token) { window.location.href = "/login"; return; }
     load();
+    loadDrafts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, reviewId]);
+
+  async function generateDraft() {
+    if (!token) return;
+    setDraftBusy(true);
+    setError("");
+    try {
+      await api.generateAIDraft(reviewId, token);
+      loadDrafts();
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to generate AI draft");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  function copyDraftToFeedback(draft: WritingFeedbackDraft) {
+    // Client-side copy into the editable feedback box. The reviewer still
+    // reviews/edits and explicitly saves; nothing is published automatically.
+    const fb = draft.draft_feedback;
+    const section = (title: string, items: string[]) =>
+      items.length ? `${title}\n${items.map((i) => `- ${i}`).join("\n")}` : "";
+    const text = [
+      fb.overall_feedback,
+      section("Strengths:", fb.strengths),
+      section("Areas for improvement:", fb.improvements),
+      section("Next steps:", fb.next_steps),
+    ].filter(Boolean).join("\n\n");
+    setComment(text);
+  }
+
+  async function discardDraft(draftId: string) {
+    if (!token) return;
+    setDraftBusy(true);
+    try {
+      await api.discardAIDraft(draftId, token);
+      loadDrafts();
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to discard draft");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
 
   async function saveFeedback() {
     if (!token || !comment.trim()) { setError("Feedback comment is required."); return; }
@@ -209,6 +261,69 @@ function ReviewDetail() {
         </div>
       )}
 
+      {!published && (
+        <div className="bg-surface border border-purple-500/30 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-medium text-text-secondary">AI Draft Feedback</h2>
+            <button
+              onClick={generateDraft}
+              disabled={draftBusy}
+              className="text-sm bg-purple-600 text-white px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50"
+            >
+              {draftBusy ? "Generating..." : "Generate AI Draft"}
+            </button>
+          </div>
+          <p className="text-purple-300 text-xs mb-3">
+            AI Draft — not visible to student or parent. The AI does not assign scores or publish;
+            review and edit before saving as official feedback.
+          </p>
+
+          {drafts.filter((d) => d.status === "generated").length === 0 && (
+            <p className="text-text-tertiary text-sm">No AI drafts yet.</p>
+          )}
+
+          <div className="space-y-4">
+            {drafts.filter((d) => d.status === "generated").map((draft) => (
+              <div key={draft.id} className="border border-border-subtle/60 rounded p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-text-tertiary text-xs">
+                    {draft.provider} · {draft.prompt_version}
+                    {draft.created_at && ` · ${new Date(draft.created_at).toLocaleString()}`}
+                  </span>
+                </div>
+                <DraftSection title="Strengths" items={draft.draft_feedback.strengths} />
+                <DraftSection title="Improvements" items={draft.draft_feedback.improvements} />
+                <DraftSection title="Next Steps" items={draft.draft_feedback.next_steps} />
+                {draft.draft_feedback.overall_feedback && (
+                  <div className="mb-2">
+                    <p className="text-text-secondary text-xs font-medium mb-0.5">Overall Feedback</p>
+                    <p className="text-text-primary text-sm whitespace-pre-wrap">
+                      {draft.draft_feedback.overall_feedback}
+                    </p>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 mt-2">
+                  <button
+                    onClick={() => copyDraftToFeedback(draft)}
+                    disabled={draftBusy}
+                    className="text-sm bg-interactive text-white px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50"
+                  >
+                    Copy to Official Feedback
+                  </button>
+                  <button
+                    onClick={() => discardDraft(draft.id)}
+                    disabled={draftBusy}
+                    className="text-sm border border-border-subtle text-text-secondary px-3 py-1.5 rounded hover:bg-surface-secondary disabled:opacity-50"
+                  >
+                    Discard Draft
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-surface border border-border-subtle rounded-lg p-4 mb-6">
         <h2 className="text-sm font-medium text-text-secondary mb-2">
           Feedback {review.feedback && <span className="text-text-tertiary">(v{review.feedback.version})</span>}
@@ -265,6 +380,20 @@ function ReviewDetail() {
           Back to Review Queue
         </Link>
       </div>
+    </div>
+  );
+}
+
+function DraftSection({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="mb-2">
+      <p className="text-text-secondary text-xs font-medium mb-0.5">{title}</p>
+      <ul className="list-disc list-inside text-text-primary text-sm space-y-0.5">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }

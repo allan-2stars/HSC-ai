@@ -15,6 +15,9 @@ vi.mock("@/lib/api", () => ({
     addWritingFeedback: vi.fn(),
     publishWritingReview: vi.fn(),
     scoreReview: vi.fn(),
+    listAIDrafts: vi.fn(() => Promise.resolve([])),
+    generateAIDraft: vi.fn(),
+    discardAIDraft: vi.fn(),
   },
 }));
 

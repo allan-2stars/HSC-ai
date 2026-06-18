@@ -6,6 +6,7 @@ from app.core.deps import get_current_admin_profile
 from app.models.user import AdminProfile
 from app.models.writing import WritingTaskStatus
 from app.schemas.writing_schema import (
+    AIDraftGenerate,
     ReviewScoresCreate,
     RubricAssign,
     RubricCreate,
@@ -17,7 +18,12 @@ from app.schemas.writing_schema import (
     WritingTaskCreate,
     WritingTaskResponse,
 )
-from app.services import writing_review_service, writing_rubric_service, writing_service
+from app.services import (
+    writing_feedback_draft_service,
+    writing_review_service,
+    writing_rubric_service,
+    writing_service,
+)
 
 router = APIRouter(prefix="/admin/writing", tags=["admin-writing"])
 
@@ -270,6 +276,59 @@ async def score_review(
 ):
     return await writing_rubric_service.upsert_scores(
         review_id, body.scores, admin_profile.id, admin_profile.user_id, db
+    )
+
+
+# ── AI feedback drafts (M5.3) ────────────────────────────────────────────────
+
+
+@router.post("/reviews/{review_id}/ai-draft", status_code=201)
+async def generate_ai_draft(
+    review_id: str,
+    body: AIDraftGenerate,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_feedback_draft_service.generate_ai_feedback_draft(
+        review_id,
+        admin_profile_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        provider_name=body.provider,
+        db=db,
+    )
+
+
+@router.get("/reviews/{review_id}/ai-drafts")
+async def list_ai_drafts(
+    review_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_feedback_draft_service.list_drafts_for_review(review_id, db)
+
+
+@router.post("/ai-drafts/{draft_id}/accept")
+async def accept_ai_draft(
+    draft_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_feedback_draft_service.accept_draft(
+        draft_id,
+        admin_profile_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        db=db,
+    )
+
+
+@router.post("/ai-drafts/{draft_id}/discard")
+async def discard_ai_draft(
+    draft_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_feedback_draft_service.discard_draft(
+        draft_id, actor_user_id=admin_profile.user_id, db=db
     )
 
 

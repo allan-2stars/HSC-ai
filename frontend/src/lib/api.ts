@@ -750,6 +750,23 @@ export const api = {
       body: JSON.stringify({ scores }),
     }, token),
 
+  // ── AI feedback drafts (M5.3) ─────────────────────────────────
+  // Admin / reviewer only — never exposed to students or parents.
+  generateAIDraft: (reviewId: string, token: string, provider?: string) =>
+    request<WritingFeedbackDraft>(`/v1/admin/writing/reviews/${reviewId}/ai-draft`, {
+      method: "POST",
+      body: JSON.stringify({ provider: provider ?? null }),
+    }, token),
+
+  listAIDrafts: (reviewId: string, token: string) =>
+    request<WritingFeedbackDraft[]>(`/v1/admin/writing/reviews/${reviewId}/ai-drafts`, {}, token),
+
+  acceptAIDraft: (draftId: string, token: string) =>
+    request<WritingReviewDetail>(`/v1/admin/writing/ai-drafts/${draftId}/accept`, { method: "POST" }, token),
+
+  discardAIDraft: (draftId: string, token: string) =>
+    request<WritingFeedbackDraft>(`/v1/admin/writing/ai-drafts/${draftId}/discard`, { method: "POST" }, token),
+
   // Student
   getSubmissionRubric: (submissionId: string, token: string) =>
     request<WritingRubricView>(`/v1/writing/submissions/${submissionId}/rubric`, {}, token),
@@ -926,6 +943,28 @@ export interface WritingReviewDetail extends WritingReviewItem {
   };
   feedback: WritingFeedback | null;
   rubric: WritingReviewRubricBlock | null;
+}
+
+// ── AI feedback drafts (M5.3) ──────────────────────────────────
+
+export interface AIDraftFeedback {
+  strengths: string[];
+  improvements: string[];
+  next_steps: string[];
+  overall_feedback: string;
+}
+
+export interface WritingFeedbackDraft {
+  id: string;
+  review_id: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  status: "generated" | "accepted" | "discarded";
+  draft_feedback: AIDraftFeedback;
+  generated_by_admin_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // ── Rubrics (M5.2) ─────────────────────────────────────────────

@@ -224,6 +224,88 @@ Every rubric mutation — including dimension **update** and **delete** — is a
 
 AI feedback, AI scoring, disputes, grade/aggregate calculations, reviewer balancing.
 
+---
+
+# AI Feedback Drafts (M5.3)
+
+AI-assisted **draft** feedback layered onto the human review workflow. A reviewer can
+generate an AI draft, read/edit it, copy it into the official feedback editor, and then
+save and publish as usual. The AI is strictly advisory.
+
+## Hard rules
+
+- AI generates **draft feedback only**. It never assigns rubric scores, never edits
+  ratings, never publishes, and never overwrites official human feedback.
+- The human reviewer remains responsible for the final feedback and the publish decision.
+- Drafts are **admin/reviewer-only** and are **never** exposed to students or parents
+  (no student/parent endpoint exists; published feedback carries only the human-authored
+  `overall_comment`).
+- Submission content, the task prompt/instructions, and (if assigned) the rubric
+  **dimension labels** are sent to the provider. No student PII (name, DOB, contact) is
+  ever included — `FeedbackParams` carries only task + submission text + dimension labels.
+
+## Workflow
+
+```
+WritingSubmission → WritingReview
+   → reviewer clicks "Generate AI Draft"  (POST .../reviews/{id}/ai-draft)
+   → AI returns structured draft (status: generated)
+   → reviewer reviews / edits / "Copy to Official Feedback" (client-side) or Discard
+   → reviewer saves official feedback (existing POST .../reviews/{id}/feedback)
+   → reviewer publishes (existing publish gate)
+```
+
+## Data model
+
+### `writing_feedback_drafts`
+| column | notes |
+|---|---|
+| `id` | uuid pk |
+| `review_id` | FK → `writing_reviews.id` |
+| `provider` / `model` / `prompt_version` | provenance of the generation |
+| `status` | `generated` / `accepted` / `discarded` |
+| `draft_feedback_json` | `{strengths[], improvements[], next_steps[], overall_feedback}` |
+| `generated_by_admin_id` | FK → `admin_profiles.id`, nullable |
+| `created_at`, `updated_at` | timestamps |
+
+Drafts are independent rows; nothing about a draft mutates the submission, the review
+state, official `writing_feedback`, or `writing_review_scores`.
+
+## Provider abstraction
+
+`app/services/writing_feedback_providers.py` mirrors the question-generation provider
+pattern: a `FeedbackParams` → `GeneratedFeedbackDraft` interface with a registry of
+`mock` (default, deterministic, offline), `openai`, `claude`, and `ollama` providers.
+Real providers use structured JSON output. `PROMPT_VERSION` is recorded on every draft.
+
+## API (admin only — `get_current_admin_profile`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/admin/writing/reviews/{id}/ai-draft` | Generate a draft (`{provider?}`). `422` if the review is already published. |
+| GET | `/api/v1/admin/writing/reviews/{id}/ai-drafts` | List drafts for the review (newest first). |
+| POST | `/api/v1/admin/writing/ai-drafts/{draft_id}/accept` | Copy the draft into a new official feedback version (human action) and mark `accepted`. Routes through the normal versioned-feedback path; never publishes. |
+| POST | `/api/v1/admin/writing/ai-drafts/{draft_id}/discard` | Mark the draft `discarded`. |
+
+The admin UI's "Copy to Official Feedback" button copies the draft into the editable
+feedback textarea client-side; the reviewer still edits and explicitly saves. The
+`accept` endpoint provides the same copy as an auditable server-side action.
+
+## Auditing (additions)
+
+| action | actor | metadata |
+|---|---|---|
+| `writing_feedback_draft.generated` | admin | `{draft_id, provider}` |
+| `writing_feedback_draft.accepted` | admin | `{review_id}` |
+| `writing_feedback_draft.discarded` | admin | `{review_id}` |
+
+## Out of scope (M5.3)
+
+AI rubric scoring / score assistance (M5.4), disputes/appeals, reviewer balancing, and
+any student/parent-facing AI output.
+
+---
+
 ## Known limitations
 
 - **No rubric snapshotting.** The published rubric assessment renders the *live*

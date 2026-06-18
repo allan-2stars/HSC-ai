@@ -113,3 +113,10 @@ class ReviewScoreInput(BaseModel):
 
 class ReviewScoresCreate(BaseModel):
     scores: list[ReviewScoreInput]
+
+
+# ── AI feedback drafts (M5.3) ────────────────────────────────────────────────
+
+
+class AIDraftGenerate(BaseModel):
+    provider: str | None = None
