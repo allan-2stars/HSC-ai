@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum as SAEnum,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -198,6 +199,58 @@ class WritingFeedbackDraft(Base, TimestampMixin):
     )
 
     review: Mapped["WritingReview"] = relationship()
+
+
+class WritingScoreSuggestionStatus(str, enum.Enum):
+    generated = "generated"
+    applied = "applied"
+    dismissed = "dismissed"
+
+
+# ── AI score suggestions (M5.4) ──────────────────────────────────────────
+
+
+class WritingScoreSuggestion(Base, TimestampMixin):
+    """AI-suggested rubric dimension ratings for a writing review. Admin-only.
+    Never visible to students or parents. Apply goes through human scoring path."""
+
+    __tablename__ = "writing_score_suggestions"
+    __table_args__ = (
+        CheckConstraint(
+            "suggested_rating IS NULL OR (suggested_rating >= 1 AND suggested_rating <= 5)",
+            name="ck_score_suggestion_rating_range",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    review_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_reviews.id"), nullable=False, index=True
+    )
+    rubric_version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubric_versions.id"), nullable=False, index=True
+    )
+    dimension_version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubric_dimension_versions.id"), nullable=False, index=True
+    )
+    suggested_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    suggested_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[WritingScoreSuggestionStatus] = mapped_column(
+        SAEnum(WritingScoreSuggestionStatus, name="score_suggestion_status"),
+        default=WritingScoreSuggestionStatus.generated,
+        nullable=False,
+        index=True,
+    )
+    generated_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("admin_profiles.id"), nullable=True
+    )
+
+    review: Mapped["WritingReview"] = relationship()
+    rubric_version: Mapped["WritingRubricVersion"] = relationship()
+    dimension_version: Mapped["WritingRubricDimensionVersion"] = relationship()
 
 
 # ── Rubrics (M5.2) ──────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from app.schemas.writing_schema import (
     RubricDimensionInput,
     RubricDimensionUpdate,
     RubricUpdate,
+    ScoreSuggestionGenerateRequest,
     WritingFeedbackCreate,
     WritingSubmissionListItem,
     WritingTaskCreate,
@@ -22,6 +23,7 @@ from app.services import (
     writing_feedback_draft_service,
     writing_review_service,
     writing_rubric_service,
+    writing_score_suggestion_service,
     writing_service,
 )
 
@@ -338,6 +340,61 @@ async def discard_ai_draft(
 ):
     return await writing_feedback_draft_service.discard_draft(
         draft_id, actor_user_id=admin_profile.user_id, db=db
+    )
+
+
+# ── AI score suggestions (M5.4) ────────────────────────────────────────────────
+
+
+@router.post("/reviews/{review_id}/score-suggestions", status_code=201)
+async def generate_score_suggestions(
+    review_id: str,
+    body: ScoreSuggestionGenerateRequest,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_score_suggestion_service.generate_suggestions(
+        review_id,
+        admin_profile_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        provider_name=body.provider or "mock",
+        db=db,
+    )
+
+
+@router.get("/reviews/{review_id}/score-suggestions")
+async def list_score_suggestions(
+    review_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_score_suggestion_service.list_suggestions(review_id, db)
+
+
+@router.post("/score-suggestions/{suggestion_id}/apply")
+async def apply_score_suggestion(
+    suggestion_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_score_suggestion_service.apply_suggestion(
+        suggestion_id,
+        admin_profile_id=admin_profile.id,
+        actor_user_id=admin_profile.user_id,
+        db=db,
+    )
+
+
+@router.post("/score-suggestions/{suggestion_id}/dismiss")
+async def dismiss_score_suggestion(
+    suggestion_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_score_suggestion_service.dismiss_suggestion(
+        suggestion_id,
+        actor_user_id=admin_profile.user_id,
+        db=db,
     )
 
 

@@ -120,3 +120,23 @@ class ReviewScoresCreate(BaseModel):
 
 class AIDraftGenerate(BaseModel):
     provider: str | None = None
+
+
+# ── AI score suggestions (M5.4) ────────────────────────────────────────────────
+
+
+class ScoreSuggestionItem(BaseModel):
+    id: str
+    review_id: str
+    dimension_version_id: str
+    dimension_name: str | None = None
+    suggested_rating: int | None
+    suggested_comment: str | None
+    confidence: float | None
+    provider: str
+    status: str
+    created_at: str | None
+
+
+class ScoreSuggestionGenerateRequest(BaseModel):
+    provider: str | None = None

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingReviewDetail, type ReviewScoreInput, type WritingFeedbackDraft } from "@/lib/api";
+import { api, type WritingReviewDetail, type ReviewScoreInput, type WritingFeedbackDraft, type ScoreSuggestionItem } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -34,6 +34,8 @@ function ReviewDetail() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
+  const [suggestions, setSuggestions] = useState<ScoreSuggestionItem[]>([]);
+  const [suggestionBusy, setSuggestionBusy] = useState(false);
 
   const token = getAccessToken();
 
@@ -69,6 +71,7 @@ function ReviewDetail() {
     if (!token) { window.location.href = "/login"; return; }
     load();
     loadDrafts();
+    loadSuggestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, reviewId]);
 
@@ -111,6 +114,55 @@ function ReviewDetail() {
       setError(e.detail ?? "Failed to discard draft");
     } finally {
       setDraftBusy(false);
+    }
+  }
+
+  async function loadSuggestions() {
+    if (!token) return;
+    try {
+      const list = await api.listScoreSuggestions(reviewId, token);
+      setSuggestions(list);
+    } catch { /* suggestions are optional */ }
+  }
+
+  async function generateSuggestions() {
+    if (!token) return;
+    setSuggestionBusy(true);
+    setError("");
+    try {
+      await api.generateScoreSuggestions(reviewId, null, token);
+      await loadSuggestions();
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to generate score suggestions");
+    } finally {
+      setSuggestionBusy(false);
+    }
+  }
+
+  async function applySuggestion(suggestionId: string) {
+    if (!token) return;
+    setSuggestionBusy(true);
+    try {
+      await api.applyScoreSuggestion(suggestionId, token);
+      await loadSuggestions();
+      load(); // reload review to show updated scores
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to apply suggestion");
+    } finally {
+      setSuggestionBusy(false);
+    }
+  }
+
+  async function dismissSuggestion(suggestionId: string) {
+    if (!token) return;
+    setSuggestionBusy(true);
+    try {
+      await api.dismissScoreSuggestion(suggestionId, token);
+      await loadSuggestions();
+    } catch (e: any) {
+      setError(e.detail ?? "Failed to dismiss suggestion");
+    } finally {
+      setSuggestionBusy(false);
     }
   }
 
@@ -317,6 +369,61 @@ function ReviewDetail() {
                   >
                     Discard Draft
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!published && review.rubric && (
+        <div className="bg-surface border border-amber-400/30 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-medium text-text-secondary">AI Score Suggestions</h2>
+            <button
+              onClick={generateSuggestions}
+              disabled={suggestionBusy}
+              className="text-sm bg-amber-500 text-black px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50"
+            >
+              {suggestionBusy ? "Generating..." : "Generate Suggestions"}
+            </button>
+          </div>
+          <p className="text-amber-300 text-xs mb-3">
+            AI suggestion only — not visible to student or parent. Applying fills the reviewer score without publishing.
+          </p>
+
+          {suggestions.length === 0 && (
+            <p className="text-text-tertiary text-sm">No AI score suggestions yet.</p>
+          )}
+
+          <div className="space-y-3">
+            {suggestions.map((s) => (
+              <div key={s.id} className="border border-border-subtle/60 rounded p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-text-primary text-sm font-medium">{s.dimension_name ?? "Dimension"}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 text-sm font-medium">{s.suggested_rating}/5</span>
+                    {s.confidence != null && (
+                      <span className="text-text-tertiary text-xs">
+                        {Math.round(s.confidence * 100)}% conf
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {s.suggested_comment && (
+                  <p className="text-text-primary text-sm mb-2 whitespace-pre-wrap">{s.suggested_comment}</p>
+                )}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-text-tertiary">{s.provider}</span>
+                  {s.status === "generated" && (
+                    <>
+                      <button onClick={() => applySuggestion(s.id)} disabled={suggestionBusy} className="text-interactive hover:underline">Apply Score</button>
+                      <button onClick={() => dismissSuggestion(s.id)} disabled={suggestionBusy} className="text-text-tertiary hover:underline">Dismiss</button>
+                    </>
+                  )}
+                  {s.status !== "generated" && (
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${s.status === "applied" ? "bg-success/10 text-success" : "bg-text-tertiary/10 text-text-tertiary"}`}>{s.status}</span>
+                  )}
                 </div>
               </div>
             ))}

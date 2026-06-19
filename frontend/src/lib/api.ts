@@ -774,6 +774,23 @@ export const api = {
   // Parent
   getStudentSubmissionRubric: (studentId: string, submissionId: string, token: string) =>
     request<WritingRubricView>(`/v1/parents/students/${studentId}/writing/${submissionId}/rubric`, {}, token),
+
+  // ── AI Score Suggestions (M5.4) ──────────────────────────────────────
+
+  generateScoreSuggestions: (reviewId: string, provider: string | null, token: string) =>
+    request<ScoreSuggestionItem[]>(`/v1/admin/writing/reviews/${reviewId}/score-suggestions`, {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    }, token),
+
+  listScoreSuggestions: (reviewId: string, token: string) =>
+    request<ScoreSuggestionItem[]>(`/v1/admin/writing/reviews/${reviewId}/score-suggestions`, {}, token),
+
+  applyScoreSuggestion: (suggestionId: string, token: string) =>
+    request<{ id: string; status: string; review_id: string }>(`/v1/admin/writing/score-suggestions/${suggestionId}/apply`, { method: "POST" }, token),
+
+  dismissScoreSuggestion: (suggestionId: string, token: string) =>
+    request<{ id: string; status: string; review_id: string }>(`/v1/admin/writing/score-suggestions/${suggestionId}/dismiss`, { method: "POST" }, token),
 };
 
 export interface SystemDashboard {
@@ -1038,4 +1055,19 @@ export interface WritingFeedbackView {
   dimensions: WritingFeedbackDimension[] | null;
   published_at: string | null;
   disclaimer: string;
+}
+
+// ── AI Score Suggestions (M5.4) ─────────────────────────────────────────
+
+export interface ScoreSuggestionItem {
+  id: string;
+  review_id: string;
+  dimension_version_id: string;
+  dimension_name: string | null;
+  suggested_rating: number | null;
+  suggested_comment: string | null;
+  confidence: number | null;
+  provider: string;
+  status: string;
+  created_at: string | null;
 }
