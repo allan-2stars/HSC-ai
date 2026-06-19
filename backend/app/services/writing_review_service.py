@@ -312,6 +312,13 @@ async def publish_review(
     from app.services import writing_rubric_service
     await writing_rubric_service.assert_rubric_complete_for_publish(review, db)
 
+    # M5.6: Bind to the latest rubric version snapshot at publish time.
+    rubric_id = await writing_rubric_service._review_task_rubric_id(review, db)
+    if rubric_id:
+        latest_version = await writing_rubric_service._latest_version(rubric_id, db)
+        if latest_version:
+            review.rubric_version_id = latest_version.id
+
     review.status = WritingReviewStatus.published
     review.published_at = datetime.now(tz=timezone.utc)
     await audit_service.log_action(

@@ -132,9 +132,14 @@ class WritingReview(Base, TimestampMixin):
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # M5.6 — freeze the rubric version used at publish time
+    rubric_version_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubric_versions.id"), nullable=True, index=True
+    )
 
     submission: Mapped["WritingSubmission"] = relationship()
     reviewer: Mapped["AdminProfile"] = relationship()  # type: ignore[name-defined]
+    rubric_version: Mapped["WritingRubricVersion | None"] = relationship()
 
 
 class WritingFeedback(Base):
@@ -245,7 +250,7 @@ class WritingReviewScore(Base, TimestampMixin):
 
     __tablename__ = "writing_review_scores"
     __table_args__ = (
-        UniqueConstraint("review_id", "dimension_id", name="uq_review_score_review_dimension"),
+        UniqueConstraint("review_id", "dimension_version_id", name="uq_review_score_review_dimversion"),
         CheckConstraint("rating >= 1 AND rating <= 5", name="ck_review_score_rating_range"),
     )
 
@@ -253,15 +258,68 @@ class WritingReviewScore(Base, TimestampMixin):
     review_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("writing_reviews.id"), nullable=False, index=True
     )
-    dimension_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("writing_rubric_dimensions.id"), nullable=False, index=True
+    # M5.2 legacy — references the live dimension (used during active review before publish)
+    dimension_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubric_dimensions.id"), nullable=True, index=True
+    )
+    # M5.6 — frozen dimension version; must match rubric_version on the review
+    dimension_version_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubric_dimension_versions.id"), nullable=True, index=True
     )
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    # Provenance — distinguishes human scoring from future AI-assisted scoring.
     created_by_admin_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("admin_profiles.id"), nullable=True
     )
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="human")
 
-    dimension: Mapped["WritingRubricDimension"] = relationship()
+    dimension: Mapped["WritingRubricDimension | None"] = relationship(foreign_keys=[dimension_id])
+    dimension_version: Mapped["WritingRubricDimensionVersion | None"] = relationship(foreign_keys=[dimension_version_id])
+
+
+# ── Rubric Versions (M5.6) ─────────────────────────────────────────────────
+
+
+class WritingRubricVersion(Base):
+    """Immutable snapshot of a rubric at the time a version was created. Editing
+    any rubric field or dimension creates a new version. Old versions never change."""
+
+    __tablename__ = "writing_rubric_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    rubric_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubrics.id"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    rubric: Mapped["WritingRubric"] = relationship()
+    dimension_versions: Mapped[list["WritingRubricDimensionVersion"]] = relationship(
+        order_by="WritingRubricDimensionVersion.display_order",
+    )
+
+
+class WritingRubricDimensionVersion(Base):
+    """Immutable snapshot of a rubric dimension at version creation time."""
+
+    __tablename__ = "writing_rubric_dimension_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    rubric_version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_rubric_versions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_dimension_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubric_dimensions.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    rubric_version: Mapped["WritingRubricVersion"] = relationship(back_populates="dimension_versions")

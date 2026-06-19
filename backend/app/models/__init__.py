@@ -84,6 +84,8 @@ from app.models.writing import (  # noqa: F401
     WritingReviewStatus,
     WritingRubric,
     WritingRubricDimension,
+    WritingRubricDimensionVersion,
+    WritingRubricVersion,
     WritingSubmission,
     WritingSubmissionStatus,
     WritingTask,

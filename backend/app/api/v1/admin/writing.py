@@ -218,6 +218,15 @@ async def update_rubric(
     )
 
 
+@router.get("/rubrics/{rubric_id}/versions")
+async def list_rubric_versions(
+    rubric_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_rubric_service.get_rubric_versions(rubric_id, db)
+
+
 @router.post("/rubrics/{rubric_id}/dimensions", status_code=201)
 async def add_dimension(
     rubric_id: str,
