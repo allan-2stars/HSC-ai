@@ -58,6 +58,9 @@ function AdminWriting() {
           <Link href="/admin/writing/submissions" className="text-sm text-interactive hover:underline">
             View Submissions →
           </Link>
+          <Link href="/admin/writing/analytics" className="text-sm text-interactive hover:underline">
+            Analytics →
+          </Link>
           <button
             onClick={() => setShowCreate(!showCreate)}
             className="text-sm bg-interactive text-white px-4 py-2 rounded hover:opacity-90"

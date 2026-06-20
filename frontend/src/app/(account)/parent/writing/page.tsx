@@ -69,7 +69,11 @@ function ParentWriting() {
             const submitted = subs.filter(s => s.status === "submitted");
             return (
               <div key={student.id} className="bg-surface border border-border-subtle rounded-lg p-4">
-                <h2 className="text-text-primary font-medium mb-2">{student.display_name}</h2>
+                <h2 className="text-text-primary font-medium mb-2">{student.display_name}
+                  <Link href={`/parent/writing/analytics/${student.id}`} className="text-interactive hover:underline text-xs ml-3 font-normal">
+                    Analytics →
+                  </Link>
+                </h2>
                 {subs.length === 0 ? (
                   <p className="text-text-tertiary text-sm">No writing activity yet.</p>
                 ) : (
