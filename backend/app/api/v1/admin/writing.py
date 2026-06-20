@@ -7,6 +7,7 @@ from app.models.user import AdminProfile
 from app.models.writing import WritingTaskStatus
 from app.schemas.writing_schema import (
     AIDraftGenerate,
+    AdminReviewNote,
     ReviewScoresCreate,
     RubricAssign,
     RubricCreate,
@@ -20,6 +21,7 @@ from app.schemas.writing_schema import (
     WritingTaskResponse,
 )
 from app.services import (
+    writing_dispute_service,
     writing_feedback_draft_service,
     writing_review_service,
     writing_rubric_service,
@@ -396,6 +398,92 @@ async def dismiss_score_suggestion(
         actor_user_id=admin_profile.user_id,
         db=db,
     )
+
+
+# ── Disputes & Reopen (M5.5) ────────────────────────────────────────────────
+
+
+@router.get("/disputes")
+async def list_disputes(
+    status: str | None = None,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.list_all_disputes(db, status_str=status)
+
+
+@router.post("/disputes/{dispute_id}/accept")
+async def accept_dispute(
+    dispute_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.accept_dispute(
+        dispute_id, admin_profile.id, admin_profile.user_id, db
+    )
+
+
+@router.post("/disputes/{dispute_id}/reject")
+async def reject_dispute(
+    dispute_id: str,
+    body: AdminReviewNote,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.reject_dispute(
+        dispute_id, admin_profile.id, body.review_notes, admin_profile.user_id, db
+    )
+
+
+@router.post("/disputes/{dispute_id}/resolve")
+async def resolve_dispute(
+    dispute_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.resolve_dispute(
+        dispute_id, admin_profile.id, admin_profile.user_id, db
+    )
+
+
+@router.post("/reviews/{review_id}/reopen")
+async def reopen_review(
+    review_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.reopen_review(
+        review_id, admin_profile.user_id, db
+    )
+
+
+@router.post("/reviews/{review_id}/republish")
+async def republish_review(
+    review_id: str,
+    admin_profile: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.republish_review(
+        review_id, admin_profile.user_id, admin_profile.id, db
+    )
+
+
+@router.get("/reviews/{review_id}/publication-versions")
+async def list_publication_versions(
+    review_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.list_publication_versions(review_id, db)
+
+
+@router.get("/publication-versions/{version_id}")
+async def get_publication_version(
+    version_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_dispute_service.get_publication_version_detail(version_id, db)
 
 
 def _task_to_response(t) -> dict:

@@ -38,6 +38,7 @@ class WritingReviewStatus(str, enum.Enum):
     under_review = "under_review"
     reviewed = "reviewed"
     published = "published"
+    reopened = "reopened"
 
 
 class WritingFeedbackDraftStatus(str, enum.Enum):
@@ -376,3 +377,75 @@ class WritingRubricDimensionVersion(Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     rubric_version: Mapped["WritingRubricVersion"] = relationship(back_populates="dimension_versions")
+
+
+# ── Disputes & Reopen (M5.5) ─────────────────────────────────────────────
+
+
+class WritingDisputeStatus(str, enum.Enum):
+    open = "open"
+    accepted = "accepted"
+    rejected = "rejected"
+    resolved = "resolved"
+
+
+class WritingReviewDispute(Base, TimestampMixin):
+    """A dispute or review request raised against a published writing review.
+    Raised by student or parent; processed by admin. Does not mutate the review
+    or submission — only captures intent and admin decisions."""
+
+    __tablename__ = "writing_review_disputes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    review_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_reviews.id"), nullable=False, index=True
+    )
+    raised_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    raised_by_role: Mapped[str] = mapped_column(String(16), nullable=False)  # student / parent / admin
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[WritingDisputeStatus] = mapped_column(
+        SAEnum(WritingDisputeStatus, name="writing_dispute_status"),
+        default=WritingDisputeStatus.open,
+        nullable=False,
+        index=True,
+    )
+    admin_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("admin_profiles.id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    review: Mapped["WritingReview"] = relationship()
+
+
+class WritingReviewPublicationVersion(Base):
+    """Immutable snapshot of a review at the moment it was published. Created
+    every time a review is published (first publish, republish after reopen).
+    The highest version_number is the current published view for students/parents."""
+
+    __tablename__ = "writing_review_publication_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    review_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("writing_reviews.id"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    rubric_version_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_rubric_versions.id"), nullable=True
+    )
+    feedback_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("writing_feedback.id"), nullable=True
+    )
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_by_admin_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("admin_profiles.id"), nullable=True
+    )
+    snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    review: Mapped["WritingReview"] = relationship()
+    rubric_version: Mapped["WritingRubricVersion | None"] = relationship()
+    feedback: Mapped["WritingFeedback | None"] = relationship()

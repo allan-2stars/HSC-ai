@@ -300,7 +300,7 @@ async def publish_review(
     review = await _get_review(review_id, db)
     if review.status == WritingReviewStatus.published:
         raise HTTPException(status_code=422, detail="Review already published")
-    if review.status != WritingReviewStatus.reviewed:
+    if review.status not in (WritingReviewStatus.reviewed, WritingReviewStatus.reopened):
         raise HTTPException(
             status_code=422, detail="Cannot publish: review is not complete (no feedback)"
         )

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingSubmissionResponse, type WritingFeedbackView, type WritingRubricView } from "@/lib/api";
+import { api, type WritingSubmissionResponse, type WritingFeedbackView, type WritingRubricView, type DisputeItem } from "@/lib/api";
 
 const RATING_LABELS: Record<number, string> = {
   1: "Needs Work",
@@ -39,6 +39,11 @@ function WritingEditor() {
   const [submitted, setSubmitted] = useState(false);
   const [feedback, setFeedback] = useState<WritingFeedbackView | null>(null);
   const [rubric, setRubric] = useState<WritingRubricView | null>(null);
+  const [disputes, setDisputes] = useState<DisputeItem[]>([]);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [showDispute, setShowDispute] = useState(false);
+  const [disputeBusy, setDisputeBusy] = useState(false);
+  const [disputeMsg, setDisputeMsg] = useState("");
   const [dirty, setDirty] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentRef = useRef(content);
@@ -63,6 +68,9 @@ function WritingEditor() {
     api.getSubmissionRubric(submissionId, token)
       .then(setRubric)
       .catch(() => setRubric(null));
+    api.listMyWritingDisputes(submissionId, token)
+      .then(setDisputes)
+      .catch(() => setDisputes([]));
   }, [submitted, submissionId, token]);
 
   useEffect(() => {
@@ -132,6 +140,23 @@ function WritingEditor() {
       setSubmitted(true);
     } catch (e: any) {
       setError(e.detail ?? "Failed to submit");
+    }
+  }
+
+  async function createDispute() {
+    if (!token || !disputeReason.trim()) return;
+    setDisputeBusy(true);
+    setDisputeMsg("");
+    try {
+      await api.createWritingDispute(submissionId, disputeReason, token);
+      setDisputeReason("");
+      setDisputeMsg("Your review request has been submitted.");
+      const list = await api.listMyWritingDisputes(submissionId, token);
+      setDisputes(list);
+    } catch (e: any) {
+      setDisputeMsg(e.detail ?? "Failed to submit request");
+    } finally {
+      setDisputeBusy(false);
     }
   }
 
@@ -221,6 +246,37 @@ function WritingEditor() {
               </div>
             </div>
           )}
+
+          {/* Dispute / Request Review */}
+          <div className="mt-4 border-t border-border-subtle pt-4">
+            <button onClick={() => setShowDispute(!showDispute)} className="text-sm text-interactive hover:underline">
+              {showDispute ? "Cancel" : "Request a review of this feedback"}
+            </button>
+            {showDispute && (
+              <div className="mt-3 bg-surface-secondary rounded p-3">
+                <p className="text-text-secondary text-xs mb-2">Explain why you believe this feedback should be reviewed.</p>
+                <textarea className="w-full h-20 bg-surface border border-border-subtle rounded p-2 text-text-primary text-sm resize-y" value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} placeholder="Describe your concern..." />
+                <div className="flex items-center gap-3 mt-2">
+                  <button onClick={createDispute} disabled={disputeBusy || !disputeReason.trim()} className="text-sm bg-interactive text-white px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50">
+                    {disputeBusy ? "Submitting..." : "Submit Request"}
+                  </button>
+                  {disputeMsg && <span className={`text-xs ${disputeMsg.includes("submitted") ? "text-success" : "text-error"}`}>{disputeMsg}</span>}
+                </div>
+              </div>
+            )}
+            {disputes.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {disputes.map((d) => (
+                  <div key={d.id} className="text-xs text-text-tertiary flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${d.status === "open" ? "bg-amber-400" : d.status === "accepted" ? "bg-interactive" : d.status === "rejected" ? "bg-error" : "bg-success"}`} />
+                    <span className="capitalize">{d.status}</span>
+                    {d.admin_response && <span>— {d.admin_response.slice(0, 60)}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-4">
             <Link href="/me/writing" className="text-interactive hover:underline text-sm">
               Back to Writing Tasks

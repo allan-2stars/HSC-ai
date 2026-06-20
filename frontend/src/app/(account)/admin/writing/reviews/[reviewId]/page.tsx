@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type WritingReviewDetail, type ReviewScoreInput, type WritingFeedbackDraft, type ScoreSuggestionItem } from "@/lib/api";
+import { api, type WritingReviewDetail, type ReviewScoreInput, type WritingFeedbackDraft, type ScoreSuggestionItem, type PublicationVersionItem } from "@/lib/api";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import RoleGuard from "@/components/RoleGuard";
 
@@ -36,6 +36,8 @@ function ReviewDetail() {
   const [draftBusy, setDraftBusy] = useState(false);
   const [suggestions, setSuggestions] = useState<ScoreSuggestionItem[]>([]);
   const [suggestionBusy, setSuggestionBusy] = useState(false);
+  const [pubVersions, setPubVersions] = useState<PublicationVersionItem[]>([]);
+  const [reopenBusy, setReopenBusy] = useState(false);
 
   const token = getAccessToken();
 
@@ -72,6 +74,7 @@ function ReviewDetail() {
     load();
     loadDrafts();
     loadSuggestions();
+    loadPubVersions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, reviewId]);
 
@@ -166,6 +169,24 @@ function ReviewDetail() {
     }
   }
 
+  // ── Reopen / Republish (M5.5) ─────────────────────────────────────
+  async function loadPubVersions() {
+    if (!token) return;
+    try { setPubVersions(await api.listPublicationVersions(reviewId, token)); } catch { /* optional */ }
+  }
+  async function handleReopen() {
+    if (!token) return;
+    setReopenBusy(true); setError("");
+    try { await api.reopenReview(reviewId, token); load(); } catch (e: any) { setError(e.detail ?? "Failed to reopen"); }
+    finally { setReopenBusy(false); }
+  }
+  async function handleRepublish() {
+    if (!token) return;
+    setReopenBusy(true); setError("");
+    try { await api.republishReview(reviewId, token); load(); loadPubVersions(); } catch (e: any) { setError(e.detail ?? "Failed to republish"); }
+    finally { setReopenBusy(false); }
+  }
+
   async function saveFeedback() {
     if (!token || !comment.trim()) { setError("Feedback comment is required."); return; }
     setBusy(true);
@@ -218,6 +239,7 @@ function ReviewDetail() {
   if (!review) return <p className="p-8 text-text-secondary">Review not found</p>;
 
   const published = review.status === "published";
+  const isReopened = review.status === "reopened";
 
   return (
     <div className="max-w-4xl mx-auto p-8">
@@ -476,11 +498,41 @@ function ReviewDetail() {
         </div>
       )}
 
-      {published && (
-        <p className="text-success text-sm">
-          Published {review.published_at && `on ${new Date(review.published_at).toLocaleString()}`} — now visible to student and parent.
-        </p>
+      {isReopened && (
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-amber-400 text-sm font-medium">Reopened — editing is active</span>
+          <button onClick={handleRepublish} disabled={reopenBusy || review.status !== "reviewed"} className="text-sm bg-success text-white px-4 py-2 rounded hover:opacity-90 disabled:opacity-50" title="Save feedback first, then republish">
+            {reopenBusy ? "Republishing..." : "Republish"}
+          </button>
+        </div>
       )}
+
+      {published && (
+        <div className="mb-4">
+          <p className="text-success text-sm mb-2">
+            Published {review.published_at && `on ${new Date(review.published_at).toLocaleString()}`} — now visible to student and parent.
+          </p>
+          <button onClick={handleReopen} disabled={reopenBusy} className="text-sm border border-amber-400 text-amber-400 px-3 py-1.5 rounded hover:bg-amber-400/10 disabled:opacity-50">
+            {reopenBusy ? "Reopening..." : "Reopen for Revision"}
+          </button>
+        </div>
+      )}
+
+      {pubVersions.length > 0 && (
+        <div className="mt-4 border-t border-border-subtle pt-4">
+          <h3 className="text-sm font-medium text-text-secondary mb-2">Publication History</h3>
+          <div className="space-y-1">
+            {pubVersions.map((v) => (
+              <div key={v.id} className="text-xs text-text-tertiary flex items-center gap-3">
+                <span className="text-text-secondary font-mono">v{v.version_number}</span>
+                {v.published_at && <span>{new Date(v.published_at).toLocaleString()}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!published && !isReopened && (
 
       <div className="mt-8">
         <Link href="/admin/writing/reviews" className="text-interactive hover:underline text-sm">

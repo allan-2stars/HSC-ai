@@ -791,6 +791,41 @@ export const api = {
 
   dismissScoreSuggestion: (suggestionId: string, token: string) =>
     request<{ id: string; status: string; review_id: string }>(`/v1/admin/writing/score-suggestions/${suggestionId}/dismiss`, { method: "POST" }, token),
+
+  // ── Disputes & Reopen (M5.5) ─────────────────────────────────────────
+
+  // Student
+  createWritingDispute: (submissionId: string, reason: string, token: string) =>
+    request<DisputeItem>(`/v1/writing/submissions/${submissionId}/disputes`, { method: "POST", body: JSON.stringify({ reason }) }, token),
+
+  listMyWritingDisputes: (submissionId: string, token: string) =>
+    request<DisputeItem[]>(`/v1/writing/submissions/${submissionId}/disputes`, {}, token),
+
+  // Parent
+  createParentWritingDispute: (studentId: string, submissionId: string, reason: string, token: string) =>
+    request<DisputeItem>(`/v1/parents/students/${studentId}/writing/${submissionId}/disputes`, { method: "POST", body: JSON.stringify({ reason }) }, token),
+
+  // Admin
+  listAllDisputes: (token: string, status?: string) =>
+    request<DisputeListItem[]>(`/v1/admin/writing/disputes${status ? `?status=${status}` : ""}`, {}, token),
+
+  acceptDispute: (disputeId: string, token: string) =>
+    request<DisputeItem>(`/v1/admin/writing/disputes/${disputeId}/accept`, { method: "POST" }, token),
+
+  rejectDispute: (disputeId: string, response: string, token: string) =>
+    request<DisputeItem>(`/v1/admin/writing/disputes/${disputeId}/reject`, { method: "POST", body: JSON.stringify({ review_notes: response }) }, token),
+
+  resolveDispute: (disputeId: string, token: string) =>
+    request<DisputeItem>(`/v1/admin/writing/disputes/${disputeId}/resolve`, { method: "POST" }, token),
+
+  reopenReview: (reviewId: string, token: string) =>
+    request<{ id: string; status: string }>(`/v1/admin/writing/reviews/${reviewId}/reopen`, { method: "POST" }, token),
+
+  republishReview: (reviewId: string, token: string) =>
+    request<{ id: string; status: string; publication_version: number }>(`/v1/admin/writing/reviews/${reviewId}/republish`, { method: "POST" }, token),
+
+  listPublicationVersions: (reviewId: string, token: string) =>
+    request<PublicationVersionItem[]>(`/v1/admin/writing/reviews/${reviewId}/publication-versions`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -1070,4 +1105,31 @@ export interface ScoreSuggestionItem {
   provider: string;
   status: string;
   created_at: string | null;
+}
+
+// ── Disputes & Reopen (M5.5) ──────────────────────────────────────────
+
+export interface DisputeItem {
+  id: string;
+  review_id: string;
+  raised_by_role: string;
+  reason: string;
+  status: string;
+  admin_response: string | null;
+  created_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface DisputeListItem extends DisputeItem {
+  task_title: string;
+  student_name: string;
+}
+
+export interface PublicationVersionItem {
+  id: string;
+  version_number: number;
+  rubric_version_id: string | null;
+  feedback_id: string | null;
+  published_at: string | null;
+  published_by_admin_id: string | null;
 }

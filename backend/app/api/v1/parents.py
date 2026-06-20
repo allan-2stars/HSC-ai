@@ -10,8 +10,10 @@ from app.schemas.user import (
     StudentResponse,
     StudentUpdateRequest,
 )
+from app.schemas.writing_schema import WritingDisputeCreate
 from app.services import (
     family_service,
+    writing_dispute_service,
     writing_review_service,
     writing_rubric_service,
     writing_service,
@@ -149,3 +151,28 @@ async def get_student_writing_rubric(
         raise HTTPException(status_code=403, detail="Not your student")
     await writing_service.get_student_submission(submission_id, student_id, db)
     return await writing_rubric_service.get_published_rubric_for_submission(submission_id, db)
+
+
+@router.post("/parents/students/{student_id}/writing/{submission_id}/disputes", status_code=201)
+async def create_parent_dispute(
+    student_id: str,
+    submission_id: str,
+    body: WritingDisputeCreate,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    from sqlalchemy import select as _select
+    from app.models.writing import WritingReview as _WritingReview
+    review_result = await db.execute(
+        _select(_WritingReview.id).where(_WritingReview.submission_id == submission_id)
+    )
+    review_row = review_result.fetchone()
+    if not review_row:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return await writing_dispute_service.create_dispute(
+        review_row[0], body.reason, "parent", parent.id, student_id, db
+    )

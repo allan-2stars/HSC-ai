@@ -140,3 +140,10 @@ class ScoreSuggestionItem(BaseModel):
 
 class ScoreSuggestionGenerateRequest(BaseModel):
     provider: str | None = None
+
+
+# ── Disputes & Reopen (M5.5) ──────────────────────────────────────────────────
+
+
+class WritingDisputeCreate(BaseModel):
+    reason: str
