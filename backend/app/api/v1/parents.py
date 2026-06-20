@@ -13,6 +13,7 @@ from app.schemas.user import (
 from app.schemas.writing_schema import WritingDisputeCreate
 from app.services import (
     family_service,
+    writing_analytics_service,
     writing_dispute_service,
     writing_review_service,
     writing_rubric_service,
@@ -176,3 +177,32 @@ async def create_parent_dispute(
     return await writing_dispute_service.create_dispute(
         review_row[0], body.reason, "parent", parent.id, student_id, db
     )
+
+
+# ── Writing Analytics (M5.7) ──────────────────────────────────────────────
+
+
+@router.get("/parents/students/{student_id}/writing/analytics")
+async def get_student_writing_analytics(
+    student_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    return await writing_analytics_service.build_student_analytics(student_id, db)
+
+
+@router.get("/parents/students/{student_id}/writing/analytics/tasks")
+async def get_student_task_analytics(
+    student_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    return await writing_analytics_service.build_task_analytics(student_id, db)

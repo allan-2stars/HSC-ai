@@ -9,7 +9,7 @@ from app.schemas.writing_schema import (
     WritingSubmissionResponse,
     WritingSubmissionSave,
 )
-from app.services import writing_dispute_service, writing_review_service, writing_rubric_service, writing_service
+from app.services import writing_analytics_service, writing_dispute_service, writing_review_service, writing_rubric_service, writing_service
 from app.services.family_service import get_student_profile
 
 router = APIRouter(prefix="/writing", tags=["writing"])
@@ -156,6 +156,27 @@ async def list_my_disputes(
     return await writing_dispute_service.list_disputes_for_review(
         review_row[0], profile.id, "student", db
     )
+
+
+# ── Analytics (M5.7) ──────────────────────────────────────────────────────
+
+
+@router.get("/analytics/me")
+async def get_my_analytics(
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_analytics_service.build_student_analytics(profile.id, db)
+
+
+@router.get("/analytics/me/tasks")
+async def get_my_task_analytics(
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_analytics_service.build_task_analytics(profile.id, db)
 
 
 def _sub_to_response(sub) -> dict:

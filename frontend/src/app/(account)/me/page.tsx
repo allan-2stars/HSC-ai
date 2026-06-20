@@ -91,6 +91,7 @@ export default function AccountPage() {
             </NavSection>
             <NavSection title="Progress">
               <NavLink href="/me/progress" label="My Progress" />
+              <NavLink href="/me/writing/analytics" label="Writing Analytics" />
             </NavSection>
           </>
         )}

@@ -826,6 +826,23 @@ export const api = {
 
   listPublicationVersions: (reviewId: string, token: string) =>
     request<PublicationVersionItem[]>(`/v1/admin/writing/reviews/${reviewId}/publication-versions`, {}, token),
+
+  // ── Writing Analytics (M5.7) ─────────────────────────────────────────
+
+  getMyWritingAnalytics: (token: string) =>
+    request<WritingAnalytics>(`/v1/writing/analytics/me`, {}, token),
+
+  getMyTaskAnalytics: (token: string) =>
+    request<TaskAnalyticsItem[]>(`/v1/writing/analytics/me/tasks`, {}, token),
+
+  getStudentWritingAnalytics: (studentId: string, token: string) =>
+    request<WritingAnalytics>(`/v1/parents/students/${studentId}/writing/analytics`, {}, token),
+
+  getAdminAnalyticsOverview: (token: string) =>
+    request<AdminAnalyticsOverview>(`/v1/admin/writing/analytics/overview`, {}, token),
+
+  getAdminStudentAnalytics: (studentId: string, token: string) =>
+    request<WritingAnalytics>(`/v1/admin/writing/analytics/students/${studentId}`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -1132,4 +1149,38 @@ export interface PublicationVersionItem {
   feedback_id: string | null;
   published_at: string | null;
   published_by_admin_id: string | null;
+}
+
+// ── Writing Analytics (M5.7) ──────────────────────────────────────────
+
+export interface WritingAnalytics {
+  summary: {
+    published_reviews: number;
+    average_rating: number | null;
+    average_word_count: number | null;
+    disputes_count: number;
+    reopened_count: number;
+  };
+  dimension_averages: { dimension_name: string; average_rating: number; attempts: number }[];
+  progress_over_time: { published_at: string | null; task_title: string; average_rating: number | null; word_count: number }[];
+  strengths: { dimension_name: string; average_rating: number }[];
+  weaknesses: { dimension_name: string; average_rating: number }[];
+  latest_feedback: { task_title: string; published_at: string | null; overall_comment: string } | null;
+}
+
+export interface TaskAnalyticsItem {
+  task_id: string;
+  task_title: string;
+  published_at: string | null;
+  word_count: number;
+  average_rating: number | null;
+}
+
+export interface AdminAnalyticsOverview {
+  published_reviews: number;
+  average_rating: number | null;
+  average_word_count: number | null;
+  disputes_count: number;
+  dimension_averages: { dimension_name: string; average_rating: number; count: number }[];
+  recent_activity: { task_title: string; student_name: string; published_at: string | null; word_count: number }[];
 }

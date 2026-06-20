@@ -21,6 +21,7 @@ from app.schemas.writing_schema import (
     WritingTaskResponse,
 )
 from app.services import (
+    writing_analytics_service,
     writing_dispute_service,
     writing_feedback_draft_service,
     writing_review_service,
@@ -484,6 +485,26 @@ async def get_publication_version(
     db: AsyncSession = Depends(get_db),
 ):
     return await writing_dispute_service.get_publication_version_detail(version_id, db)
+
+
+# ── Writing Analytics (M5.7) ──────────────────────────────────────────────
+
+
+@router.get("/analytics/overview")
+async def admin_analytics_overview(
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_analytics_service.build_admin_overview(db)
+
+
+@router.get("/analytics/students/{student_id}")
+async def admin_student_analytics(
+    student_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_analytics_service.build_student_analytics(student_id, db)
 
 
 def _task_to_response(t) -> dict:
