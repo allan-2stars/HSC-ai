@@ -15,6 +15,7 @@ from app.services import (
     family_service,
     writing_analytics_service,
     writing_dispute_service,
+    writing_portfolio_service,
     writing_review_service,
     writing_rubric_service,
     writing_service,
@@ -206,3 +207,33 @@ async def get_student_task_analytics(
     if student_id not in [s.id for s in students]:
         raise HTTPException(status_code=403, detail="Not your student")
     return await writing_analytics_service.build_task_analytics(student_id, db)
+
+
+# ── Portfolio (M5.8) ──────────────────────────────────────────────────────
+
+
+@router.get("/parents/students/{student_id}/writing/portfolio")
+async def get_student_portfolio(
+    student_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    return await writing_portfolio_service.build_portfolio_list(student_id, db)
+
+
+@router.get("/parents/students/{student_id}/writing/portfolio/items/{submission_id}")
+async def get_student_portfolio_item(
+    student_id: str,
+    submission_id: str,
+    parent: User = Depends(get_current_parent),
+    db: AsyncSession = Depends(get_db),
+):
+    parent_profile = await family_service.get_parent_profile(parent.id, db)
+    students = await family_service.list_students(parent_profile.id, db)
+    if student_id not in [s.id for s in students]:
+        raise HTTPException(status_code=403, detail="Not your student")
+    return await writing_portfolio_service.build_portfolio_detail(submission_id, student_id, db)

@@ -843,6 +843,29 @@ export const api = {
 
   getAdminStudentAnalytics: (studentId: string, token: string) =>
     request<WritingAnalytics>(`/v1/admin/writing/analytics/students/${studentId}`, {}, token),
+
+  // ── Writing Portfolio (M5.8) ──────────────────────────────────────────
+
+  // Student
+  getMyPortfolio: (token: string) =>
+    request<PortfolioList>(`/v1/writing/portfolio/me`, {}, token),
+
+  getMyPortfolioItem: (submissionId: string, token: string) =>
+    request<PortfolioDetail>(`/v1/writing/portfolio/me/items/${submissionId}`, {}, token),
+
+  // Parent
+  getStudentPortfolio: (studentId: string, token: string) =>
+    request<PortfolioList>(`/v1/parents/students/${studentId}/writing/portfolio`, {}, token),
+
+  getStudentPortfolioItem: (studentId: string, submissionId: string, token: string) =>
+    request<PortfolioDetail>(`/v1/parents/students/${studentId}/writing/portfolio/items/${submissionId}`, {}, token),
+
+  // Admin
+  getAdminStudentPortfolio: (studentId: string, token: string) =>
+    request<PortfolioList>(`/v1/admin/writing/portfolio/students/${studentId}`, {}, token),
+
+  getAdminStudentPortfolioItem: (studentId: string, submissionId: string, token: string) =>
+    request<PortfolioDetail>(`/v1/admin/writing/portfolio/students/${studentId}/items/${submissionId}`, {}, token),
 };
 
 export interface SystemDashboard {
@@ -1183,4 +1206,56 @@ export interface AdminAnalyticsOverview {
   disputes_count: number;
   dimension_averages: { dimension_name: string; average_rating: number; count: number }[];
   recent_activity: { task_title: string; student_name: string; published_at: string | null; word_count: number }[];
+}
+
+// ── Writing Portfolio (M5.8) ──────────────────────────────────────────
+
+export interface PortfolioItem {
+  submission_id: string;
+  task_id: string;
+  task_title: string;
+  submitted_at: string | null;
+  published_at: string | null;
+  word_count: number;
+  average_rating: number | null;
+  strongest_dimensions: { dimension_name: string; rating: number }[];
+  weakest_dimensions: { dimension_name: string; rating: number }[];
+  latest_feedback_summary: string | null;
+  has_dispute: boolean;
+  was_reopened: boolean;
+}
+
+export interface PortfolioList {
+  items: PortfolioItem[];
+  count: number;
+}
+
+export interface PortfolioScore {
+  dimension_id: string;
+  name: string;
+  rating: number;
+  comment: string;
+}
+
+export interface PortfolioDetail {
+  submission_id: string;
+  task_id: string;
+  task_title: string | null;
+  task_prompt: string | null;
+  task_instructions: string | null;
+  submitted_content: string;
+  word_count: number;
+  submitted_at: string | null;
+  published_at: string | null;
+  publication_version: number;
+  was_reopened: boolean;
+  rubric_title: string | null;
+  feedback: {
+    overall_comment: string | null;
+    version: number | null;
+    dimensions: any[] | null;
+  } | null;
+  scores: PortfolioScore[];
+  disputes: { id: string; status: string; reason: string; admin_response: string | null }[];
+  disclaimer: string;
 }

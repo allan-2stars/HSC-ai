@@ -9,7 +9,7 @@ from app.schemas.writing_schema import (
     WritingSubmissionResponse,
     WritingSubmissionSave,
 )
-from app.services import writing_analytics_service, writing_dispute_service, writing_review_service, writing_rubric_service, writing_service
+from app.services import writing_analytics_service, writing_dispute_service, writing_portfolio_service, writing_review_service, writing_rubric_service, writing_service
 from app.services.family_service import get_student_profile
 
 router = APIRouter(prefix="/writing", tags=["writing"])
@@ -177,6 +177,28 @@ async def get_my_task_analytics(
 ):
     profile = await get_student_profile(student.id, db)
     return await writing_analytics_service.build_task_analytics(profile.id, db)
+
+
+# ── Portfolio (M5.8) ──────────────────────────────────────────────────────
+
+
+@router.get("/portfolio/me")
+async def get_my_portfolio(
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_portfolio_service.build_portfolio_list(profile.id, db)
+
+
+@router.get("/portfolio/me/items/{submission_id}")
+async def get_my_portfolio_item(
+    submission_id: str,
+    student: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await get_student_profile(student.id, db)
+    return await writing_portfolio_service.build_portfolio_detail(submission_id, profile.id, db)
 
 
 def _sub_to_response(sub) -> dict:

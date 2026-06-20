@@ -24,6 +24,7 @@ from app.services import (
     writing_analytics_service,
     writing_dispute_service,
     writing_feedback_draft_service,
+    writing_portfolio_service,
     writing_review_service,
     writing_rubric_service,
     writing_score_suggestion_service,
@@ -505,6 +506,28 @@ async def admin_student_analytics(
     db: AsyncSession = Depends(get_db),
 ):
     return await writing_analytics_service.build_student_analytics(student_id, db)
+
+
+# ── Portfolio (M5.8) ──────────────────────────────────────────────────────
+
+
+@router.get("/portfolio/students/{student_id}")
+async def admin_student_portfolio(
+    student_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_portfolio_service.build_portfolio_list(student_id, db)
+
+
+@router.get("/portfolio/students/{student_id}/items/{submission_id}")
+async def admin_student_portfolio_item(
+    student_id: str,
+    submission_id: str,
+    _: AdminProfile = Depends(get_current_admin_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    return await writing_portfolio_service.build_portfolio_detail(submission_id, student_id, db)
 
 
 def _task_to_response(t) -> dict:
